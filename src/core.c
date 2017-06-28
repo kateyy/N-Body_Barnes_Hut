@@ -1,5 +1,7 @@
+#include <math.h>
 #include <png.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <time.h>
 #include "config.h"
 #include "core.h"
@@ -128,7 +130,6 @@ initializeNode (struct node *node, struct node *up, double sx, double sy,
 		int bodies_quantity, int deep)
 {
   struct coord coord;
-  float regulator;
   coord.x = sx;
   coord.y = sy;
   coord.z = sz;
@@ -388,7 +389,7 @@ setCenterOfMass (struct node *node)
 void
 applyForceBetweenBodies (struct body *b1, struct body *b2)
 {
-  double xDistance, yDistance, zDistance, DistanceSquared, force, distance;
+  double xDistance, yDistance, zDistance, DistanceSquared, force;
   xDistance = b2->position.x - b1->position.x;
   yDistance = b2->position.y - b1->position.y;
   zDistance = b2->position.z - b1->position.z;
@@ -436,7 +437,7 @@ void
 forceOverNode (struct node *node, struct node *down, struct body *body,
 	       int inverse)
 {
-  int var, i;
+  int var;
   if (node == NULL)
     return;
   if (node->UNE != NULL && (node->UNE != down || inverse)) {
@@ -496,8 +497,8 @@ forceOverNode (struct node *node, struct node *down, struct body *body,
 void
 init (void)
 {
-  int i, j;
-  double vx, vy, vz, theta, dist, dist2;
+  int i;
+  double vx, vy, vz;
   positionData = fopen ("positionData.csv", "wb");
   nodes = (struct node *) malloc (sizeof (struct node) * MAX_NODES);
   roots = (struct node **) malloc (sizeof (struct node *) * MAX_NODES);
@@ -540,7 +541,7 @@ init (void)
 
 
 void
-update (int value)
+update (void)
 {
     
   if(frame == frameLimit){
@@ -548,7 +549,7 @@ update (int value)
     printf ("Simulation time Ellapsed = %f\n", timespecDiff(&end, &start) / 1e9);
     exit(0);
   }
-  int i, j, k;
+  int i, j;
   //angleX += 0.5;
   if (angleX > 360)
     angleX -= 360;
@@ -598,6 +599,6 @@ update (int value)
 
 void benchMode(){
   while(1){
-    update(0);
+    update();
   }
 }

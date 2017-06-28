@@ -79,4 +79,5 @@ int applyForce(struct node *node, struct body *body);
 void forceOverNode(struct node *node, struct node *down, struct body *body,
 		   int inverse);
 void init(void);
-void update(int value);
+void update(void);
+void benchMode(void);

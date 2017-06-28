@@ -83,7 +83,7 @@ float Color_list[56][3] = { {204, 0, 0},
 
 /* based on Delphi function by Witold J.Janik */
 void
-GiveRainbowColor (double position, unsigned char *c)
+GiveRainbowColor (double position, float *c)
 {
   /* if position > 1 then we have repetition of colors it maybe useful    */
 
@@ -99,7 +99,6 @@ GiveRainbowColor (double position, unsigned char *c)
 
   int n = (int) m;		// integer of m
 
-  double f = m - n;		// fraction of m
   unsigned char t = position * 0.1;
 
   switch (n) {
@@ -147,6 +146,11 @@ GiveRainbowColor (double position, unsigned char *c)
     };
 
   };				// case
+
+  float div = 0.003921569f;
+  c[0] *= div;
+  c[1] *= div;
+  c[2] *= div;
 }
 
 
@@ -218,11 +222,8 @@ void
 drawScene ()
 {
   int i;
-  float r, g, b;
-  unsigned char pRGB[WIDTH * HEIGHT * 3 + 3];
-  double acel;
-  unsigned char color[3];
-  char buf[20];
+  float color[3];
+
   glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   glMatrixMode (GL_MODELVIEW);
@@ -235,7 +236,7 @@ drawScene ()
   glBegin (GL_POINTS);
   for (i = 0; i < bodiesQuantity; i++) {
     GiveRainbowColor (bodies[i].acel, color);
-    glColor4f (255, 255, 255, 0.5f);
+    glColor4f (color[0], color[1], color[2], 0.5f);
     glVertex3f (bodies[i].position.x / (50000 * LY),
 		bodies[i].position.y / (50000 * LY),
 		bodies[i].position.z / (50000 * LY));

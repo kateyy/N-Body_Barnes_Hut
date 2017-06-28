@@ -3,7 +3,7 @@
 
 #define colorMax 3E4
 
-void GiveRainbowColor(double position, unsigned char * c);
+void GiveRainbowColor(double position, float * c);
 void initRendering();
 void handleResize(int w, int h);
 void handleKeypress(unsigned char key, int x, int y);

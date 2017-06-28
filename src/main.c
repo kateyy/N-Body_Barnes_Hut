@@ -36,12 +36,10 @@ bitmap_t image;
 void
 readArgs (int argc, char **argv)
 {
-  int i, frame = 0;
   int m, n,			/* Loop counters. */
     l,				/* String length. */
     x,				/* Exit code. */
-    ch;				/* Character buffer. */
-  char s[256];			/* String buffer. */
+    ch=0;				/* Character buffer. */
 
   for (n = 1; n < argc; n++) {	/* Scan through args. */
     switch ((int) argv[n][0]) {	/* Check for option character. */
