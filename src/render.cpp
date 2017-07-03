@@ -1,14 +1,14 @@
+#include <iomanip>
+#include <iostream>
 #include <GL/glut.h>
 #include "render.h"
 #include "core.h"
 #include "config.h"
 
-int paused = 0;
-float angleX = 0, angleY = 0, positionZ = -10;
-struct timespec start, end;
-int render = 0, frame = 0;
-extern int bodiesQuantity;
+using namespace config;
 
+namespace
+{
 
 float Color_list[56][3] = { {204, 0, 0},
 {102, 204, 0},
@@ -83,7 +83,7 @@ float Color_list[56][3] = { {204, 0, 0},
 
 /* based on Delphi function by Witold J.Janik */
 void
-GiveRainbowColor (double position, float *c)
+GiveRainbowColor(double position, float *c)
 {
   /* if position > 1 then we have repetition of colors it maybe useful    */
 
@@ -99,7 +99,7 @@ GiveRainbowColor (double position, float *c)
 
   int n = (int) m;		// integer of m
 
-  unsigned char t = position * 0.1;
+  double t = position * 0.1;
 
   switch (n) {
   case 0:{
@@ -146,17 +146,35 @@ GiveRainbowColor (double position, float *c)
     };
 
   };				// case
+}
 
-  float div = 0.003921569f;
-  c[0] *= div;
-  c[1] *= div;
-  c[2] *= div;
 }
 
 
+Renderer& Renderer::instance()
+{
+    static Renderer ren;
+    return ren;
+}
 
-void
-initRendering ()
+void Renderer::setModel(Model * model)
+{
+    instance().m_model = model;
+}
+
+Renderer::Renderer()
+  : m_model{ nullptr }
+  , paused{ false }
+  , nextFrameToRender{ 0u }
+  , angleX{ 0 }
+  , angleY{ 0 }
+  , positionZ{ -10 }
+{
+}
+
+Renderer::~Renderer() = default;
+
+void Renderer::init()
 {
   glEnable (GL_DEPTH_TEST);
   glEnable (GL_NORMALIZE);
@@ -164,8 +182,7 @@ initRendering ()
   glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
-void
-handleResize (int w, int h)
+void Renderer::handleResize(int w, int h)
 {
   glViewport (0, 0, w, h);
   glMatrixMode (GL_PROJECTION);
@@ -174,8 +191,17 @@ handleResize (int w, int h)
 }
 
 
-void
-handleKeypress (unsigned char key, int x, int y)
+void Renderer::handleKeypress(unsigned char key, int x, int y)
+{
+  handleSpecial(key, x, y);
+}
+
+void Renderer::handleSpecial(int key, int x, int y)
+{
+  instance().handleKeypress_mem(key, x, y);
+}
+
+void Renderer::handleKeypress_mem(int key, int x, int y)
 {
   switch (key) {
   case 27:			//Escape key
@@ -193,18 +219,9 @@ handleKeypress (unsigned char key, int x, int y)
   case GLUT_KEY_DOWN:
     angleY -= 2;
     break;
-  case 112:
+  case GLUT_KEY_F12:
     paused = !paused;
-    if (paused) {
-      glutIdleFunc (NULL);
-      fprintf (positionData, "P1\n");
-    } else {
-      glutIdleFunc (update);
-      fprintf (positionData, "P0\n");
-    }
-    break;
-  case 114:
-    render = !render;
+    m_model->pause(paused);
     break;
   case 43:
     positionZ -= 1;
@@ -213,16 +230,39 @@ handleKeypress (unsigned char key, int x, int y)
     positionZ += 1;
     break;
   }
+
+  //angleX += 0.5;
+  if (angleX > 360)
+    angleX -= 360;
+  if (angleY > 360)
+    angleY -= 360;
+  if (angleX < 0)
+    angleX += 360;
+  if (angleY < 0)
+    angleY += 360;
+
   printf ("%i\n", key);
   glutPostRedisplay ();
 }
 
-
-void
-drawScene ()
+void Renderer::drawScene()
 {
-  int i;
-  float color[3];
+  instance().drawScene_mem();
+}
+
+void Renderer::drawScene_mem()
+{
+  if (!m_model) {
+    return;
+  }
+
+  // Skip rendering if the model has no progress yet.
+  const auto modelFrame = m_model->frameCount();
+  if (modelFrame < nextFrameToRender) {
+    printf("ren: skipping\n");
+    return;
+  }
+  nextFrameToRender = modelFrame + 1;
 
   glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -234,73 +274,82 @@ drawScene ()
   glRotatef (angleX, 0.0f, 1.0f, 0.0f);
   glRotatef (angleY, 1.0f, 1.0f, 0.0f);
   glBegin (GL_POINTS);
-  for (i = 0; i < bodiesQuantity; i++) {
-    GiveRainbowColor (bodies[i].acel, color);
+
+  auto lockedData = m_model->lockedData();
+
+  const auto startTime = std::chrono::high_resolution_clock::now();
+
+
+  for (const Body &body : lockedData.bodies) {
+    float color[3];
+    GiveRainbowColor (body.acel, color);
     glColor4f (color[0], color[1], color[2], 0.5f);
-    glVertex3f (bodies[i].position.x / (50000 * LY),
-		bodies[i].position.y / (50000 * LY),
-		bodies[i].position.z / (50000 * LY));
+    glVertex3f(body.position.x / (50000 * LY),
+      body.position.y / (50000 * LY),
+      body.position.z / (50000 * LY));
   }
   glEnd ();
   //Tree renderization
-#if 0
-  for (i = 0; i < node_quantity; i++) {
+#if 1
+  for (size_t i = 0; i < lockedData.nodes.size(); ++i) {
+    const Node &node = lockedData.nodes[i];
     glColor4f (Color_list[i % 56][0] / 256.0, Color_list[i % 56][1] / 256.0,
 	       Color_list[i % 56][2] / 256.0, 1);
     glBegin (GL_LINE_STRIP);
-    glVertex3f (nodes[i].start.x / (50000 * LY),
-		nodes[i].start.y / (50000 * LY),
-		nodes[i].start.z / (50000 * LY));
-    glVertex3f (nodes[i].start.x / (50000 * LY),
-		nodes[i].end.y / (50000 * LY),
-		nodes[i].start.z / (50000 * LY));
-    glVertex3f (nodes[i].end.x / (50000 * LY), nodes[i].end.y / (50000 * LY),
-		nodes[i].start.z / (50000 * LY));
-    glVertex3f (nodes[i].end.x / (50000 * LY),
-		nodes[i].start.y / (50000 * LY),
-		nodes[i].start.z / (50000 * LY));
-    glVertex3f (nodes[i].start.x / (50000 * LY),
-		nodes[i].start.y / (50000 * LY),
-		nodes[i].start.z / (50000 * LY));
-    glVertex3f (nodes[i].start.x / (50000 * LY),
-		nodes[i].start.y / (50000 * LY),
-		nodes[i].end.z / (50000 * LY));
-    glVertex3f (nodes[i].start.x / (50000 * LY),
-		nodes[i].end.y / (50000 * LY), nodes[i].end.z / (50000 * LY));
-    glVertex3f (nodes[i].start.x / (50000 * LY),
-		nodes[i].end.y / (50000 * LY),
-		nodes[i].start.z / (50000 * LY));
+    glVertex3f (node.start.x / (50000 * LY),
+		node.start.y / (50000 * LY),
+		node.start.z / (50000 * LY));
+    glVertex3f (node.start.x / (50000 * LY),
+		node.end.y / (50000 * LY),
+		node.start.z / (50000 * LY));
+    glVertex3f (node.end.x / (50000 * LY), node.end.y / (50000 * LY),
+		node.start.z / (50000 * LY));
+    glVertex3f (node.end.x / (50000 * LY),
+		node.start.y / (50000 * LY),
+		node.start.z / (50000 * LY));
+    glVertex3f (node.start.x / (50000 * LY),
+		node.start.y / (50000 * LY),
+		node.start.z / (50000 * LY));
+    glVertex3f (node.start.x / (50000 * LY),
+		node.start.y / (50000 * LY),
+		node.end.z / (50000 * LY));
+    glVertex3f (node.start.x / (50000 * LY),
+		node.end.y / (50000 * LY), node.end.z / (50000 * LY));
+    glVertex3f (node.start.x / (50000 * LY),
+		node.end.y / (50000 * LY),
+		node.start.z / (50000 * LY));
     glEnd ();
     glBegin (GL_LINE_STRIP);
-    glVertex3f (nodes[i].start.x / (50000 * LY),
-		nodes[i].end.y / (50000 * LY), nodes[i].end.z / (50000 * LY));
-    glVertex3f (nodes[i].end.x / (50000 * LY), nodes[i].end.y / (50000 * LY),
-		nodes[i].end.z / (50000 * LY));
-    glVertex3f (nodes[i].end.x / (50000 * LY),
-		nodes[i].start.y / (50000 * LY),
-		nodes[i].end.z / (50000 * LY));
-    glVertex3f (nodes[i].start.x / (50000 * LY),
-		nodes[i].start.y / (50000 * LY),
-		nodes[i].end.z / (50000 * LY));
+    glVertex3f (node.start.x / (50000 * LY),
+		node.end.y / (50000 * LY), node.end.z / (50000 * LY));
+    glVertex3f (node.end.x / (50000 * LY), node.end.y / (50000 * LY),
+		node.end.z / (50000 * LY));
+    glVertex3f (node.end.x / (50000 * LY),
+		node.start.y / (50000 * LY),
+		node.end.z / (50000 * LY));
+    glVertex3f (node.start.x / (50000 * LY),
+		node.start.y / (50000 * LY),
+		node.end.z / (50000 * LY));
     glEnd ();
     glBegin (GL_LINE_STRIP);
-    glVertex3f (nodes[i].end.x / (50000 * LY),
-		nodes[i].start.y / (50000 * LY),
-		nodes[i].end.z / (50000 * LY));
-    glVertex3f (nodes[i].end.x / (50000 * LY),
-		nodes[i].start.y / (50000 * LY),
-		nodes[i].start.z / (50000 * LY));
+    glVertex3f (node.end.x / (50000 * LY),
+		node.start.y / (50000 * LY),
+		node.end.z / (50000 * LY));
+    glVertex3f (node.end.x / (50000 * LY),
+		node.start.y / (50000 * LY),
+		node.start.z / (50000 * LY));
     glEnd ();
     glBegin (GL_LINE_STRIP);
-    glVertex3f (nodes[i].end.x / (50000 * LY), nodes[i].end.y / (50000 * LY),
-		nodes[i].start.z / (50000 * LY));
-    glVertex3f (nodes[i].end.x / (50000 * LY), nodes[i].end.y / (50000 * LY),
-		nodes[i].end.z / (50000 * LY));
+    glVertex3f (node.end.x / (50000 * LY), node.end.y / (50000 * LY),
+		node.start.z / (50000 * LY));
+    glVertex3f (node.end.x / (50000 * LY), node.end.y / (50000 * LY),
+		node.end.z / (50000 * LY));
     glEnd ();
   }
 #endif
-  glutSwapBuffers ();
-  glFlush ();
+  glutSwapBuffers();
+  glFlush();
+  glutPostRedisplay();
 #if 0
   glReadPixels (0, 0, HEIGHT, WIDTH, GL_RGB, GL_UNSIGNED_BYTE, pRGB);
   free (image.pixels);
@@ -313,4 +362,8 @@ drawScene ()
   sprintf (buf, "%i.png", frame++);
   save_png_to_file (&image, buf);
 #endif
+
+  const auto endTime = std::chrono::high_resolution_clock::now();
+  std::cout << "Render time:  " << std::setw(11) << timeDiffNanonSecs(startTime, endTime) / 1000
+      << "micro seconds" << std::endl;
 }
