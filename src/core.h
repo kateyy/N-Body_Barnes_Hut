@@ -10,11 +10,20 @@
 #include <vector>
 #include <utility>
 
+#include <glm/vec3.hpp>
+
 struct Vec3d
 {
     double x;
     double y;
     double z;
+
+    operator glm::tvec3<double>() const {
+        return { x, y, z };
+    }
+    operator glm::vec3() const {
+        return { x, y, z };
+    }
 
     constexpr double lengthSq() const {
         return x*x + y*y + z*z;

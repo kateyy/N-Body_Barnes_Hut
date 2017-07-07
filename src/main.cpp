@@ -20,10 +20,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <ctime>
+#include <iostream>
 #include <string>
 
-#include <GL/glut.h>
+#include <GLFW/glfw3.h>
+
+#include <globjects/globjects.h>
 
 #include "core.h"
 #include "render.h"
@@ -84,37 +86,68 @@ Args::Args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-  const Args args(argc, argv);
-  std::srand(0);
-  Model model;
-  model.visualMode = args.visualMode;
-  model.setFrameLimit(args.frameLimit);
-  model.init(args.bodiesQuantity);
-  Renderer::setModel(&model);
-  if (args.visualMode) {
-    // Bitmap image;
-    // image.width = WIDTH;
-    // image.height = HEIGHT;
-    glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_ALPHA | GLUT_DEPTH);
-    glutInitWindowSize(WIDTH, HEIGHT);
+    const Args args(argc, argv);
+    std::srand(0);
+    Model model;
+    model.visualMode = args.visualMode;
+    model.setFrameLimit(args.frameLimit);
+    model.init(args.bodiesQuantity);
+    Renderer::setModel(&model);
+    if (args.visualMode) {
+        if (!glfwInit()) {
+            return 1;
+        }
+        struct CallTerminate
+        {
+            ~CallTerminate() { glfwTerminate(); }
+        } callTerminate;
+        glfwSetErrorCallback([] (int errnum, const char * errmsg) {
+            std::cerr << "[GLFW] error " << errnum << " - \"" << errmsg << "\"" << std::endl;
+        });
+        glfwDefaultWindowHints();
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_DOUBLEBUFFER, true);
+        struct GLFWwindow_t
+        {
+            GLFWwindow_t(int width, int height, const char * const title)
+                : window{ glfwCreateWindow(width, height, title, nullptr, nullptr) } {}
+            ~GLFWwindow_t() {
+                if (window) {
+                    glfwDestroyWindow(window);
+                }
+            }
+            operator GLFWwindow*() { return window; }
+        private:
+            GLFWwindow *window;
+        };
+        GLFWwindow_t window{ WIDTH, HEIGHT, "N-Body: Barnes Hut" };
+        if (!window) {
+            std::cerr << "Context creation failed. Terminate execution." << std::endl;
+            return 2;
+        }
 
-    glutCreateWindow("teste");
-    Renderer::init();
+        glfwSetKeyCallback(window, Renderer::handleKeypress);
+        glfwSetFramebufferSizeCallback(window, Renderer::handleResize);
+        glfwMakeContextCurrent(window);
+        globjects::init();
+        Renderer::init(window);
 
-    glutDisplayFunc(Renderer::drawScene);
-    glutKeyboardFunc(Renderer::handleKeypress);
-    glutSpecialFunc(Renderer::handleSpecial);
-    glutReshapeFunc(Renderer::handleResize);
+        model.run();
 
-    model.run();
+        while (!glfwWindowShouldClose(window))
+        {
+            glfwPollEvents();
+            if (Renderer::drawScene()) {
+                glfwSwapBuffers(window);
+            }
+        }
 
-    glutMainLoop();
-
-    model.stopAndWait();
-  }
-  else {
-    model.benchMode();
-  }
-  return 0;
+        model.stopAndWait();
+    }
+    else {
+        model.benchMode();
+    }
+    return 0;
 }

@@ -14,7 +14,10 @@ endforeach()
 
 find_package(OpenMP REQUIRED)
 find_package(OpenGL REQUIRED)
-find_package(GLUT REQUIRED)
+find_package(glfw3 REQUIRED)
+find_package(glm REQUIRED)
+find_package(glbinding REQUIRED)
+find_package(globjects REQUIRED)
 find_package(PNG REQUIRED)
 
 if (NOT OPENGL_GLU_FOUND)
@@ -63,7 +66,7 @@ function(configure_target targetName)
 
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         target_compile_options(${targetName} PRIVATE
-            /W4 /we4013 /wd4505
+            /W4 /we4013 /wd4201 /wd4251 /wd4505
             /MP
             /Zc:forScope /Zc:inline /Zc:rvalueCast /Zc:wchar_t
             $<$<CONFIG:Debug>:      /F 33554432>
@@ -72,7 +75,7 @@ function(configure_target targetName)
                 /Oi /Ot /Oy /GL /fp:fast /arch:AVX2 /GS-
             >
             $<$<CONFIG:RelWithDebInfo>:
-                /Oy- /fp:fast /arch:AVX2 /GS- /FR /Zi
+                /Oy- /fp:fast /arch:AVX2 /GS- /Zi
             >
         )
         target_compile_definitions(${targetName} PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -103,8 +106,9 @@ target_link_libraries(nbody
     PUBLIC
         OpenMP::OpenMP_CXX
         ${OPENGL_gl_LIBRARY}
-        ${OPENGL_glu_LIBRARY}
-        GLUT::GLUT
+        glfw
+        glm
+        globjects::globjects
         ${PNG_LIBRARIES}
 )
 
@@ -117,7 +121,7 @@ target_include_directories(nbody SYSTEM
 target_compile_definitions(nbody
     PRIVATE
         ${PNG_DEFINITIONS}
+        GLFW_INCLUDE_NONE
     PUBLIC
         # $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
-        FREEGLUT_LIB_PRAGMAS=0
 )

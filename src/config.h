@@ -13,4 +13,5 @@ constexpr double C = 3E10;
 constexpr double LY = 9.4605284E15;
 constexpr double SIZE_OF_SIMULATION = 120E2 * 5 * LY;
 constexpr double TOTAL_MASS = 1e49 * 50000;
+constexpr bool PRINT_TIMINGS = false;
 }

@@ -584,9 +584,12 @@ void Model::updateUnlocked()
         m_bodies[i].force.z = 0;
     }
     m_frameCount++;
-    const auto endTime = std::chrono::high_resolution_clock::now();
-    std::cout << "Compute time: " << std::setw(11) << timeDiffNanonSecs(startTime, endTime) / 1000
-        << "micro seconds, Frame: " << m_frameCount << std::endl;
+    if (PRINT_TIMINGS)
+    {
+        const auto endTime = std::chrono::high_resolution_clock::now();
+        std::cout << "Compute time: " << std::setw(11) << timeDiffNanonSecs(startTime, endTime) / 1000
+            << "micro seconds, Frame: " << m_frameCount << std::endl;
+    }
 }
 
 Model::LockedData Model::lockedData()
