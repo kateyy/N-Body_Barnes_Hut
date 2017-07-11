@@ -381,14 +381,6 @@ void Node::updateCenterOfMass()
     }
 }
 
-void Body::applyForceFrom(const Body &other)
-{
-    const Vec3d xyzDist = other.position - position;
-    const double DistanceSquared = glm::length2(xyzDist) + EPS2;
-    const double newForce = K * other.mass * mass / DistanceSquared * 0.5;
-    force += xyzDist / std::sqrt(DistanceSquared) * newForce;
-}
-
 bool Node::applyForceTo(Body &body) const
 {
     Vec3d xyzDist = body.position - (end + start) * 0.5;
@@ -577,25 +569,29 @@ bool Model::updateUnlocked()
     if (m_outputPositions_f) {
         fprintf(m_outputPositions_f, "FF\n");
     }
-    for (size_t i = 0; i < m_bodies.size(); i++) {
+    #pragma omp parallel for
+    for (ptrdiff_t i = 0; i < ptrdiff_t(m_bodies.size()); i++) {
         m_bodies[i].speed.x += m_bodies[i].force.x / m_bodies[i].mass;
         m_bodies[i].speed.y += m_bodies[i].force.y / m_bodies[i].mass;
         m_bodies[i].speed.z += m_bodies[i].force.z / m_bodies[i].mass;
         m_bodies[i].acel = std::sqrt(m_bodies[i].speed.x * m_bodies[i].speed.x +
             m_bodies[i].speed.y * m_bodies[i].speed.y +
             m_bodies[i].speed.z * m_bodies[i].speed.z) / colorMax;
-        if (m_outputPositions_f) {
-            fprintf(m_outputPositions_f, "%i,%i,%i,%i\n",
-                (int)(m_bodies[i].position.x * 10E-16),
-                (int)(m_bodies[i].position.y * 10E-16),
-                (int)(m_bodies[i].position.z * 10E-16), (int)m_bodies[i].acel);
-        }
         m_bodies[i].position.x += m_bodies[i].speed.x * 50E12;
         m_bodies[i].position.y += m_bodies[i].speed.y * 50E12;
         m_bodies[i].position.z += m_bodies[i].speed.z * 50E12;
         m_bodies[i].force.x = 0;
         m_bodies[i].force.y = 0;
         m_bodies[i].force.z = 0;
+    }
+    if (m_outputPositions_f) {
+        for (const Body& body : m_bodies) {
+            fprintf(m_outputPositions_f, "%i,%i,%i,%i\n",
+                int(body.position.x * 10E-16),
+                int(body.position.y * 10E-16),
+                int(body.position.z * 10E-16),
+                int(body.acel));
+        }
     }
     m_frameCount++;
     if (PRINT_TIMINGS)

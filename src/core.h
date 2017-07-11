@@ -31,8 +31,6 @@ struct Body
     Vec3d speed;
     double acel;
     double mass;
-
-    void applyForceFrom(const Body &other);
 };
 
 
