@@ -26,6 +26,10 @@
 #include "core.h"
 #include "config.h"
 
+#ifdef OPTION_WITH_PNG_EXPORT
+#include "bitmap.h"
+#endif
+
 using namespace config;
 using namespace gl33core;
 

@@ -1,8 +1,9 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <cstdint>
+#include <cstdio>
 #include <functional>
+#include <limits>
 #include <iomanip>
 #include <iostream>
 
@@ -11,160 +12,43 @@
 
 #include "core.h"
 
-#ifdef OPTION_WITH_PNG_EXPORT
-#include <png.h>
-#endif
-
 constexpr double colorMax = 3E4;
 using namespace config;
+
+namespace
+{
+constexpr BodyIndex_t invalidBodyIdx = std::numeric_limits<BodyIndex_t>::max();
+constexpr NodeIndex_t invalidNodeIdx = std::numeric_limits<NodeIndex_t>::max();
+}
 
 int64_t timeDiffNanonSecs(timepoint_t start, timepoint_t end)
 {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }
 
-
-#ifdef OPTION_WITH_PNG_EXPORT
-
-Bitmap::Bitmap(uint32_t width, uint32_t height)
-    : m_width{ width }
-    , m_height{ height }
-    , m_pixels{ std::make_unique<Pixel[]>(width * height)}
-{
-}
-
-Bitmap::~Bitmap() = default;
-
-Pixel& Bitmap::at(const uint32_t x, const uint32_t y)
-{
-    assert(m_pixels && x < m_width && y < m_height);
-    return m_pixels[y * m_width + x];
-}
-
-const Pixel& Bitmap::at(const uint32_t x, const uint32_t y) const
-{
-    assert(m_pixels && x < m_width && y < m_height);
-    return m_pixels[y * m_width + x];
-}
-
-uint8_t* Bitmap::rgb8_data()
-{
-    return &m_pixels[0].red;
-}
-
-const uint8_t* Bitmap::rgb8_data() const
-{
-    return &m_pixels[0].red;
-}
-
-bool Bitmap::toPngFile(const std::string & filePath) const
-{
-    FILE *fp;
-    png_structp png_ptr = NULL;
-    png_infop info_ptr = NULL;
-    png_byte **row_pointers = NULL;
-    bool success = false;
-    /* The following number is set by trial and error only. I cannot
-       see where it is documented in the libpng manual.
-     */
-    int pixel_size = 3;
-    int depth = 8;
-
-    fp = fopen(filePath.c_str(), "wb");
-    if (!fp) {
-        return false;
-    }
-
-    png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (png_ptr == NULL) {
-        goto png_create_write_struct_failed;
-    }
-
-    info_ptr = png_create_info_struct(png_ptr);
-    if (info_ptr == NULL) {
-        goto png_create_info_struct_failed;
-    }
-
-    /* Set up error handling. */
-
-    if (setjmp(png_jmpbuf(png_ptr))) {
-        goto png_failure;
-    }
-
-    /* Set image attributes. */
-
-    png_set_IHDR(png_ptr,
-        info_ptr,
-        m_width,
-        m_height,
-        depth,
-        PNG_COLOR_TYPE_RGB,
-        PNG_INTERLACE_NONE,
-        PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-
-      /* Initialize rows of PNG. */
-
-    row_pointers = static_cast<png_byte**>(png_malloc(png_ptr, m_height * sizeof(png_byte *)));
-    for (uint32_t y = 0; y < m_height; ++y) {
-        png_byte *row = static_cast<png_byte*>(png_malloc(png_ptr,
-            sizeof(png_byte) * m_width *
-            pixel_size));
-        row_pointers[y] = row;
-        for (uint32_t x = 0; x < m_width; ++x) {
-            const Pixel &pixel = at(x, y);
-            *row++ = pixel.red;
-            *row++ = pixel.green;
-            *row++ = pixel.blue;
-        }
-    }
-
-    /* Write the image data to "fp". */
-
-    png_init_io(png_ptr, fp);
-    png_set_rows(png_ptr, info_ptr, row_pointers);
-    png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
-
-    /* The routine has successfully written the file */
-    success = true;
-
-    for (size_t y = 0; y < m_height; y++) {
-        png_free(png_ptr, row_pointers[y]);
-    }
-    png_free(png_ptr, row_pointers);
-
-png_failure:
-png_create_info_struct_failed:
-    png_destroy_write_struct(&png_ptr, &info_ptr);
-png_create_write_struct_failed:
-    fclose(fp);
-    return success;
-}
-
-#endif
-
 Node::Node()
-    : Node(nullptr,
+    : Node(invalidNodeIdx,
         0.0, 0.0, 0.0,
         0.0, 0.0, 0.0,
         -1)
 {
 }
 
-Node::Node(Node *up,
+Node::Node(const NodeIndex_t up,
     double sx, double sy, double sz,
     double ex, double ey, double ez,
     int depth)
     : start{ sx, sy, sz }
     , end{ ex, ey, ez }
     , depth{ depth }
-    , UNE{ nullptr }
-    , UNW{ nullptr }
-    , USE{ nullptr }
-    , USW{ nullptr }
-    , DNE{ nullptr }
-    , DNW{ nullptr }
-    , DSE{ nullptr }
-    , DSW{ nullptr }
+    , UNE{ invalidNodeIdx }
+    , UNW{ invalidNodeIdx }
+    , USE{ invalidNodeIdx }
+    , USW{ invalidNodeIdx }
+    , DNE{ invalidNodeIdx }
+    , DNW{ invalidNodeIdx }
+    , DSE{ invalidNodeIdx }
+    , DSW{ invalidNodeIdx }
     , UP{ up }
 {
 }
@@ -198,7 +82,7 @@ void swap(Node &lhs, Node &rhs)
     swap(lhs.DSE, rhs.DSE);
     swap(lhs.DSW, rhs.DSW);
     swap(lhs.UP, rhs.UP);
-    swap(lhs.m_bodies, rhs.m_bodies);
+    swap(lhs.m_bodyIndices, rhs.m_bodyIndices);
     swap(lhs.m_centerOfMass, rhs.m_centerOfMass);
 }
 
@@ -213,13 +97,8 @@ void Node::resetNeighborhood()
     Node null;
     null.start = start;
     null.end = end;
-    null.m_bodies = std::move(m_bodies);
+    null.m_bodyIndices = std::move(m_bodyIndices);
     swap(*this, null);
-}
-
-void Node::addBody(Body *body)
-{
-    m_bodies.push_back(body);
 }
 
 Model::Model()
@@ -241,35 +120,35 @@ Model::~Model()
 
 void Model::resetNodes()
 {
-    const size_t reserveSize = m_nodes.reservedSize();
     m_nodes.resize(1);
-    m_nodes.reserve(reserveSize);
     m_nodes.front().resetNeighborhood();
     m_nodes.front().depth = 0;
 }
 
-void Model::divideNode(Node *node)
+void Model::divideNode(const NodeIndex_t nodeIndex)
 {
-    if (!node) {
+    if (nodeIndex == invalidNodeIdx) {
         return;
     }
-    if (node->bodies_quantity() == 1) {
-        m_roots.push_back(node);
+    Node &node = m_nodes[nodeIndex];
+    if (node.bodies_quantity() == 1) {
+        m_rootIndices.push_back(nodeIndex);
         return;
     }
-    if (node->bodies_quantity() == 0) {
+    if (node.bodies_quantity() == 0) {
         return;
     }
-    const double sx = node->start.x;
-    const double sy = node->start.y;
-    const double sz = node->start.z;
-    const double ex = node->end.x;
-    const double ey = node->end.y;
-    const double ez = node->end.z;
+    const double sx = node.start.x;
+    const double sy = node.start.y;
+    const double sz = node.start.z;
+    const double ex = node.end.x;
+    const double ey = node.end.y;
+    const double ez = node.end.z;
     const double mx = (sx + ex) / 2.0;
     const double my = (sy + ey) / 2.0;
     const double mz = (sz + ez) / 2.0;
-    for (Body *body : node->bodies()) {
+    for (const uint32_t bodyIndex : node.bodies()) {
+        const Body *body = &m_bodies[bodyIndex];
         if (body->position.x < sx
             || body->position.x >= ex
             || body->position.y < sy
@@ -280,102 +159,102 @@ void Model::divideNode(Node *node)
         if (body->position.x < mx) {
             if (body->position.y < my) {
                 if (body->position.z < mz) {
-                    if (node->UNW == NULL) {
-                        m_nodes.emplace_back(node,
-                            sx, sy, sz, mx, my, mz, node->depth + 1);
-                        node->UNW = &m_nodes.back();
+                    if (node.UNW == invalidNodeIdx) {
+                        m_nodes.emplace_back(nodeIndex,
+                            sx, sy, sz, mx, my, mz, node.depth + 1);
+                        node.UNW = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    node->UNW->addBody(body);
+                    m_nodes[node.UNW].addBody(indexOfBody(body));
                 }
                 else {    // z >= mz
-                    if (node->DNW == NULL) {
-                        m_nodes.emplace_back(node,
-                            sx, sy, mz, mx, my, ez, node->depth + 1);
-                        node->DNW = &m_nodes.back();
+                    if (node.DNW == invalidNodeIdx) {
+                        m_nodes.emplace_back(nodeIndex,
+                            sx, sy, mz, mx, my, ez, node.depth + 1);
+                        node.DNW = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    node->DNW->addBody(body);
+                    m_nodes[node.DNW].addBody(indexOfBody(body));
                 }
             }
             else {      // y >= my
                 if (body->position.z < mz) {
-                    if (node->USW == NULL) {
-                        m_nodes.emplace_back(node,
-                            sx, my, sz, mx, ey, mz, node->depth + 1);
-                        node->USW = &m_nodes.back();
+                    if (node.USW == invalidNodeIdx) {
+                        m_nodes.emplace_back(nodeIndex,
+                            sx, my, sz, mx, ey, mz, node.depth + 1);
+                        node.USW = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    node->USW->addBody(body);
+                    m_nodes[node.USW].addBody(indexOfBody(body));
                 }
                 else {    // z >= mz
-                    if (node->DSW == NULL) {
-                        m_nodes.emplace_back(node,
-                            sx, my, mz, mx, ey, ez, node->depth + 1);
-                        node->DSW = &m_nodes.back();
+                    if (node.DSW == invalidNodeIdx) {
+                        m_nodes.emplace_back(nodeIndex,
+                            sx, my, mz, mx, ey, ez, node.depth + 1);
+                        node.DSW = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    node->DSW->addBody(body);
+                    m_nodes[node.DSW].addBody(indexOfBody(body));
                 }
             }
         }
         else {      // x >= mx
             if (body->position.y < my) {
                 if (body->position.z < mz) {
-                    if (node->UNE == NULL) {
-                        m_nodes.emplace_back(node,
-                            mx, sy, sz, ex, my, mz, node->depth + 1);
-                        node->UNE = &m_nodes.back();
+                    if (node.UNE == invalidNodeIdx) {
+                        m_nodes.emplace_back(nodeIndex,
+                            mx, sy, sz, ex, my, mz, node.depth + 1);
+                        node.UNE = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    node->UNE->addBody(body);
+                    m_nodes[node.UNE].addBody(indexOfBody(body));
                 }
                 else {    // z >= mz
-                    if (node->DNE == NULL) {
-                        m_nodes.emplace_back(node,
-                            mx, sy, mz, ex, my, ez, node->depth + 1);
-                        node->DNE = &m_nodes.back();
+                    if (node.DNE == invalidNodeIdx) {
+                        m_nodes.emplace_back(nodeIndex,
+                            mx, sy, mz, ex, my, ez, node.depth + 1);
+                        node.DNE = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    node->DNE->addBody(body);
+                    m_nodes[node.DNE].addBody(indexOfBody(body));
                 }
             }
             else {      // y >= my
                 if (body->position.z < mz) {
-                    if (node->USE == NULL) {
-                        m_nodes.emplace_back(node,
-                            mx, my, sz, ex, ey, mz, node->depth + 1);
-                        node->USE = &m_nodes.back();
+                    if (node.USE == invalidNodeIdx) {
+                        m_nodes.emplace_back(nodeIndex,
+                            mx, my, sz, ex, ey, mz, node.depth + 1);
+                        node.USE = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    node->USE->addBody(body);
+                    m_nodes[node.USE].addBody(indexOfBody(body));
                 }
                 else {    // z >= mz
-                    if (node->DSE == NULL) {
-                        m_nodes.emplace_back(node,
-                            mx, my, mz, ex, ey, ez, node->depth + 1);
-                        node->DSE = &m_nodes.back();
+                    if (node.DSE == invalidNodeIdx) {
+                        m_nodes.emplace_back(nodeIndex,
+                            mx, my, mz, ex, ey, ez, node.depth + 1);
+                        node.DSE = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    node->DSE->addBody(body);
+                    m_nodes[node.DSE].addBody(indexOfBody(body));
                 }
             }
         }
     }
-    divideNode(node->UNW);
-    divideNode(node->UNE);
-    divideNode(node->USW);
-    divideNode(node->USE);
-    divideNode(node->DNW);
-    divideNode(node->DNE);
-    divideNode(node->DSW);
-    divideNode(node->DSE);
+    divideNode(node.UNW);
+    divideNode(node.UNE);
+    divideNode(node.USW);
+    divideNode(node.USE);
+    divideNode(node.DNW);
+    divideNode(node.DNE);
+    divideNode(node.DSW);
+    divideNode(node.DSE);
 }
 
-void Node::updateCenterOfMass()
+void Node::updateCenterOfMass(const std::vector<Body> &allBodies)
 {
     m_centerOfMass.position = { 0, 0, 0 };
     m_centerOfMass.mass = 0;
     if (bodies_quantity() >= 1) {
-        for (size_t i = 0; i < bodies_quantity(); ++i) {
-            const auto totalSpeed = glm::length(m_bodies[i]->speed);
+        for (const BodyIndex_t i : m_bodyIndices) {
+            const Body& body = allBodies[i];
+            const auto totalSpeed = glm::length(body.speed);
             const double relativisticAjust = 1 /
                 std::sqrt(1 - (totalSpeed * totalSpeed) / (C * C));
-            m_centerOfMass.position += m_bodies[i]->position
-                * m_bodies[i]->mass * relativisticAjust;
-            m_centerOfMass.mass += m_bodies[i]->mass * relativisticAjust;
+            m_centerOfMass.position += body.position * body.mass * relativisticAjust;
+            m_centerOfMass.mass += body.mass * relativisticAjust;
         }
         m_centerOfMass.position /= m_centerOfMass.mass;
     }
@@ -398,67 +277,27 @@ bool Node::applyForceTo(Body &body) const
     }
 }
 
-namespace
+void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, bool inverse)
 {
-
-void forceOverNode(Node *node, Node *down, Body &body, bool inverse)
-{
-    if (!node) {
+    if (nodeIdx == invalidNodeIdx) {
         return;
     }
-    if (node->UNE && (node->UNE != down || inverse)) {
-        const bool canApproximate = node->UNE->applyForceTo(body);
-        if (!canApproximate) {
-            forceOverNode(node->UNE, node, body, true);
-        }
-    }
-    if (node->UNW && (node->UNW != down || inverse)) {
-        const bool canApproximate = node->UNW->applyForceTo(body);
-        if (!canApproximate) {
-            forceOverNode(node->UNW, node, body, true);
-        }
-    }
-    if (node->USE && (node->USE != down || inverse)) {
-        const bool canApproximate = node->USE->applyForceTo(body);
-        if (!canApproximate) {
-            forceOverNode(node->USE, node, body, true);
-        }
-    }
-    if (node->USW && (node->USW != down || inverse)) {
-        const bool canApproximate = node->USW->applyForceTo(body);
-        if (!canApproximate) {
-            forceOverNode(node->USW, node, body, true);
-        }
-    }
-    if (node->DNE && (node->DNE != down || inverse)) {
-        const bool canApproximate = node->DNE->applyForceTo(body);
-        if (!canApproximate) {
-            forceOverNode(node->DNE, node, body, true);
-        }
-    }
-    if (node->DNW && (node->DNW != down || inverse)) {
-        const bool canApproximate = node->DNW->applyForceTo(body);
-        if (!canApproximate) {
-            forceOverNode(node->DNW, node, body, true);
-        }
-    }
-    if (node->DSE && (node->DSE != down || inverse)) {
-        const bool canApproximate = node->DSE->applyForceTo(body);
-        if (!canApproximate) {
-            forceOverNode(node->DSE, node, body, true);
-        }
-    }
-    if (node->DSW && (node->DSW != down || inverse)) {
-        const bool canApproximate = node->DSW->applyForceTo(body);
-        if (!canApproximate) {
-            forceOverNode(node->DSW, node, body, true);
-        }
-    }
-    if (!inverse)
-        forceOverNode(node->UP, node, body, false);
-    return;
-}
 
+    const Node& node = m_nodes[nodeIdx];
+
+    for (const NodeIndex_t childIdx : { node.UNE, node.UNW, node.USE, node.USW,
+        node.DNE, node.DNW, node.DSE, node.DSW}) {
+        if (childIdx != invalidNodeIdx && (childIdx != downIdx || inverse)) {
+            const bool canApproximate = m_nodes[childIdx].applyForceTo(body);
+            if (!canApproximate) {
+                forceOverNode(childIdx, nodeIdx, body, true);
+            }
+        }
+    }
+
+    if (!inverse)
+        forceOverNode(node.UP, nodeIdx, body, false);
+    return;
 }
 
 void Model::init(const size_t numBodies, const bool writeToFile)
@@ -467,19 +306,19 @@ void Model::init(const size_t numBodies, const bool writeToFile)
     if (writeToFile) {
         m_outputPositions_f = std::fopen("positionData.csv", "wb");
     }
-    const size_t maxPossibleNumNodes = std::min(numBodies, size_t(MAX_NODES)) * 10;
-    m_nodes.reserve(maxPossibleNumNodes);
-    m_roots.reserve(numBodies);
+    m_nodes.reserve(numBodies);
+    m_rootIndices.reserve(numBodies);
     m_bodies.resize(numBodies);
 
-    m_nodes.emplace_back(nullptr,
+    m_nodes.emplace_back(invalidNodeIdx,
         -SIZE_OF_SIMULATION * 30, -SIZE_OF_SIMULATION * 30, -SIZE_OF_SIMULATION * 30,
         SIZE_OF_SIMULATION * 30, SIZE_OF_SIMULATION * 30, SIZE_OF_SIMULATION * 30,
         0);
 
     constexpr double radius = 60E3 * LY;
 
-    for (Body &body : m_bodies) {
+    for (BodyIndex_t i = 0; i < m_bodies.size(); ++i) {
+        Body& body = m_bodies[i];
         body.position = glm::ballRand<double>(radius);
         body.force.x = 0;
         body.force.y = 0;
@@ -488,7 +327,7 @@ void Model::init(const size_t numBodies, const bool writeToFile)
         body.speed.x = 0;
         body.speed.y = 0;
         body.speed.z = 0;
-        m_nodes[0].addBody(&body);
+        m_nodes[0].addBody(i);
     }
 
     m_startTime = std::chrono::high_resolution_clock::now();
@@ -551,19 +390,20 @@ bool Model::updateUnlocked()
             timeDiffNanonSecs(m_startTime, m_endTime) / 1e9);
         return false;
     }
-    m_roots.clear();
+    m_rootIndices.clear();
     resetNodes();
-    divideNode(&m_nodes.front());
+    divideNode(0);
 #pragma omp parallel for
     for (ptrdiff_t i = 0; i < static_cast<ptrdiff_t>(m_nodes.size()); ++i) {
-        m_nodes[i].updateCenterOfMass();
+        m_nodes[i].updateCenterOfMass(m_bodies);
     }
   #pragma omp parallel for
-    for (ptrdiff_t rootId = 0; rootId < static_cast<ptrdiff_t>(m_roots.size()); ++rootId) {
-        Node * root = m_roots[rootId];
+    for (ptrdiff_t ri = 0; ri < static_cast<ptrdiff_t>(m_rootIndices.size()); ++ri) {
+        const NodeIndex_t rootIdx = m_rootIndices[ri];
+        const Node& root = m_nodes[rootIdx];
   #pragma omp parallel for
-        for (ptrdiff_t bodyId = 0; bodyId < static_cast<ptrdiff_t>(root->bodies().size()); ++bodyId) {
-            forceOverNode(root, NULL, *root->bodies()[bodyId], false);
+        for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
+            forceOverNode(rootIdx, invalidNodeIdx, m_bodies[root.bodies()[bodyIdx]], false);
         }
     }
     if (m_outputPositions_f) {
@@ -571,18 +411,11 @@ bool Model::updateUnlocked()
     }
     #pragma omp parallel for
     for (ptrdiff_t i = 0; i < ptrdiff_t(m_bodies.size()); i++) {
-        m_bodies[i].speed.x += m_bodies[i].force.x / m_bodies[i].mass;
-        m_bodies[i].speed.y += m_bodies[i].force.y / m_bodies[i].mass;
-        m_bodies[i].speed.z += m_bodies[i].force.z / m_bodies[i].mass;
-        m_bodies[i].acel = std::sqrt(m_bodies[i].speed.x * m_bodies[i].speed.x +
-            m_bodies[i].speed.y * m_bodies[i].speed.y +
-            m_bodies[i].speed.z * m_bodies[i].speed.z) / colorMax;
-        m_bodies[i].position.x += m_bodies[i].speed.x * 50E12;
-        m_bodies[i].position.y += m_bodies[i].speed.y * 50E12;
-        m_bodies[i].position.z += m_bodies[i].speed.z * 50E12;
-        m_bodies[i].force.x = 0;
-        m_bodies[i].force.y = 0;
-        m_bodies[i].force.z = 0;
+        Body& body = m_bodies[i];
+        body.speed += body.force / body.mass;
+        body.acel = glm::length(body.speed) / colorMax;
+        body.position += body.speed * 50E12;
+        body.force = { 0, 0, 0 };
     }
     if (m_outputPositions_f) {
         for (const Body& body : m_bodies) {

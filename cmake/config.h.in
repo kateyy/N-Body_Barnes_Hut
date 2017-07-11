@@ -3,7 +3,11 @@
 namespace config
 {
 constexpr size_t MAX_NODES = 1000000;
+#ifdef NDEBUG
 constexpr size_t BODIES_QUANTITY = 50000;
+#else
+constexpr size_t BODIES_QUANTITY = 5;
+#endif
 constexpr double K = 6.67259E-11;
 constexpr double ALPHA = 0.5;
 constexpr int WIDTH = 800;

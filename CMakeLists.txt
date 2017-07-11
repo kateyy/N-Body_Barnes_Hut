@@ -12,7 +12,7 @@ foreach(p CMP0054)
     endif()
 endforeach()
 
-if (CMAKE_BUILD_TYPE)
+if (DEFINED CMAKE_BUILD_TYPE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug;Release")
 endif()
 
@@ -59,8 +59,15 @@ function(configure_target targetName)
 
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         target_compile_options(${targetName} PRIVATE
-            -Wpedantic
             -Wall
+            -Wextra
+            -Wpedantic
+            -Werror-return-stack-address
+
+            $<$<CONFIG:Debug>: -fstack-protector>
+
+            -fcolor-diagnostics
+
             -ffast-math
         )
         if (NOT CMAKE_CXX_COMPILER_ID VERSION_LESS 3.8)
@@ -82,13 +89,16 @@ function(configure_target targetName)
 
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         target_compile_options(${targetName} PRIVATE
-            -Wpedantic
             -Wall
-            -ffast-math
+            -Wextra
+            -Wpedantic
+        )
+        target_compile_definitions(${targetName} PUBLIC
+            $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
         )
         if (NOT PGASUS_PLATFORM_PPC64LE)
             target_compile_options(${targetName} PRIVATE
-                -march=native -mtune=native  -malign-double
+                -ffast-math -march=native -mtune=native -malign-double
             )
         endif()
         if (OPTION_PROFILING)
@@ -142,16 +152,18 @@ if (OPTION_WITH_RENDERING)
         src/render.cpp
     )
 endif()
+if (OPTION_WITH_PNG_EXPORT)
+    list(APPEND sources
+        src/bitmap.h
+        src/bitmap.cpp
+    )
+endif()
 
 add_executable(nbody ${sources})
 configure_target(nbody)
 
 target_include_directories(nbody PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(nbody SYSTEM PUBLIC ${GLM_INCLUDE_DIR})
-target_compile_definitions(nbody
-    PUBLIC
-        # $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
-)
 
 if (OPTION_WITH_RENDERING)
     target_link_libraries(nbody
