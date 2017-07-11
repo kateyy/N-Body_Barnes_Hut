@@ -7,83 +7,13 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 #include <utility>
 
 #include <glm/vec3.hpp>
 
-struct Vec3d
-{
-    double x;
-    double y;
-    double z;
-
-    operator glm::tvec3<double>() const {
-        return { x, y, z };
-    }
-    operator glm::vec3() const {
-        return { x, y, z };
-    }
-
-    constexpr double lengthSq() const {
-        return x*x + y*y + z*z;
-    }
-    /*constexpr*/ double length() const {
-        return std::sqrt(lengthSq());
-    }
-
-    constexpr Vec3d& operator+=(const Vec3d &other) {
-        this->x += other.x;
-        this->y += other.y;
-        this->z += other.z;
-        return *this;
-    }
-    constexpr Vec3d& operator-=(const Vec3d &other) {
-        this->x -= other.x;
-        this->y -= other.y;
-        this->z -= other.z;
-        return *this;
-    }
-    constexpr Vec3d& operator*=(const double value) {
-        this->x *= value;
-        this->y *= value;
-        this->z *= value;
-        return *this;
-    }
-    constexpr Vec3d& operator/=(const Vec3d &other) {
-        this->x /= other.x;
-        this->y /= other.y;
-        this->z /= other.z;
-        return *this;
-    }
-    constexpr Vec3d& operator/=(const double value) {
-        this->x /= value;
-        this->y /= value;
-        this->z /= value;
-        return *this;
-    }
-};
-
-inline constexpr Vec3d operator+(Vec3d lhs, const Vec3d &rhs) {
-    lhs += rhs;
-    return lhs;
-}
-inline constexpr Vec3d operator-(Vec3d lhs, const Vec3d &rhs) {
-    lhs -= rhs;
-    return lhs;
-}
-inline constexpr Vec3d operator*(Vec3d lhs, const double value) {
-    lhs *= value;
-    return lhs;
-}
-inline constexpr Vec3d operator/(Vec3d lhs, const Vec3d &rhs) {
-    lhs /= rhs;
-    return lhs;
-}
-inline constexpr Vec3d operator/(Vec3d lhs, const double value) {
-    lhs /= value;
-    return lhs;
-}
+using Vec3d = glm::tvec3<double>;
 
 struct Color
 {

@@ -2,12 +2,14 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <functional>
 #include <iomanip>
 #include <iostream>
 
 #include <png.h>
+
+#include <glm/gtc/random.hpp>
+#include <glm/gtx/norm.hpp>
 
 #include "config.h"
 #include "core.h"
@@ -354,7 +356,7 @@ void Node::updateCenterOfMass()
     m_centerOfMass.mass = 0;
     if (bodies_quantity() >= 1) {
         for (size_t i = 0; i < bodies_quantity(); ++i) {
-            const auto totalSpeed = m_bodies[i]->speed.length();
+            const auto totalSpeed = glm::length(m_bodies[i]->speed);
             const double relativisticAjust = 1 /
                 std::sqrt(1 - (totalSpeed * totalSpeed) / (C * C));
             m_centerOfMass.position += m_bodies[i]->position
@@ -368,20 +370,19 @@ void Node::updateCenterOfMass()
 void Body::applyForceFrom(const Body &other)
 {
     const Vec3d xyzDist = other.position - position;
-    const double DistanceSquared = xyzDist.lengthSq() + EPS2;
+    const double DistanceSquared = glm::length2(xyzDist) + EPS2;
     const double newForce = K * other.mass * mass / DistanceSquared * 0.5;
-    const double dist = std::sqrt(DistanceSquared);
     force += xyzDist / std::sqrt(DistanceSquared) * newForce;
 }
 
 bool Node::applyForceTo(Body &body) const
 {
     Vec3d xyzDist = body.position - (end + start) * 0.5;
-    const double distance = xyzDist.length();
+    const double distance = glm::length(xyzDist);
     if ((this->end.x - this->start.x) / distance < ALPHA
         || this->bodies_quantity() == 1) {
         xyzDist = m_centerOfMass.position - body.position;
-        const double DistanceSquared = xyzDist.lengthSq() + EPS2;
+        const double DistanceSquared = glm::length2(xyzDist) + EPS2;
         const double force = K * m_centerOfMass.mass * body.mass / DistanceSquared;
         body.force += xyzDist / std::sqrt(DistanceSquared) * force;
         return true;
@@ -470,13 +471,10 @@ void Model::init(const size_t numBodies, const bool writeToFile)
         SIZE_OF_SIMULATION * 30, SIZE_OF_SIMULATION * 30, SIZE_OF_SIMULATION * 30,
         0);
 
+    constexpr double radius = 60E3 * LY;
+
     for (Body &body : m_bodies) {
-        body.position.x =
-            (std::rand() % 10000000 / 10000000.0) * 120E3 * LY - 60E3 * LY;
-        body.position.y =
-            (std::rand() % 10000000 / 10000000.0) * 120E3 * LY - 60E3 * LY;
-        body.position.z =
-            (std::rand() % 10000000 / 10000000.0) * 120E3 * LY - 60E3 * LY;
+        body.position = glm::ballRand<double>(radius);
         body.force.x = 0;
         body.force.y = 0;
         body.force.z = 0;

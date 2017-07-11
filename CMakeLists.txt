@@ -39,6 +39,7 @@ function(configure_target targetName)
         target_compile_options(${targetName} PRIVATE
             -Wpedantic
             -Wall
+            -ffast-math
         )
         if (NOT CMAKE_CXX_COMPILER_ID VERSION_LESS 3.8)
             target_compile_options(${targetName} PRIVATE
@@ -48,6 +49,12 @@ function(configure_target targetName)
         if (NOT CMAKE_CXX_COMPILER_ID VERSION_LESS "4.0")
             target_compile_options(${targetName} PRIVATE
                 $<$<CONFIG:Debug>:-fno-limit-debug-info>
+            )
+        endif()
+
+        if (NOT PGASUS_PLATFORM_PPC64LE)
+            target_compile_options(${targetName} PRIVATE
+                -march=native -mtune=native
             )
         endif()
 

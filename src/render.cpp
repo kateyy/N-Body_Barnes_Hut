@@ -375,7 +375,7 @@ bool Renderer::drawScene_mem()
     const auto projection = glm::perspective(45.f,  float(m_winSize.x) / m_winSize.y, 0.01f, 200.f);
     const auto transform = projection * view;
 
-    constexpr float scale = 1.f / (50000.f * LY);
+    constexpr double scale = 1.f / (50000.f * LY);
 
     const auto waitModelStartTime = std::chrono::high_resolution_clock::now();
     std::vector<RenderBody> toGpuData;
