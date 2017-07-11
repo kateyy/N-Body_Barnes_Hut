@@ -12,6 +12,10 @@ foreach(p CMP0054)
     endif()
 endforeach()
 
+if (CMAKE_BUILD_TYPE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug;Release")
+endif()
+
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 include(CMakeDependentOption)
@@ -21,6 +25,9 @@ option(OPTION_WITH_RENDERING
 cmake_dependent_option(OPTION_WITH_PNG_EXPORT
     "Write each frame to a PNG file next to the executable" OFF
     "OPTION_WITH_RENDERING" OFF)
+
+option(OPTION_PROFILING
+    "Setup compile flags for profiling with GPROF (gcc only)." OFF)
 
 find_package(OpenMP REQUIRED)
 find_package(glm REQUIRED)
@@ -79,11 +86,14 @@ function(configure_target targetName)
             -Wall
             -ffast-math
         )
-
         if (NOT PGASUS_PLATFORM_PPC64LE)
             target_compile_options(${targetName} PRIVATE
                 -march=native -mtune=native  -malign-double
             )
+        endif()
+        if (OPTION_PROFILING)
+            target_compile_options(${targetName} PRIVATE -g -pg)
+            target_link_libraries(${targetName} PRIVATE -pg)
         endif()
 
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
