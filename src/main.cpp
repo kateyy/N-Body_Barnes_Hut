@@ -98,6 +98,7 @@ int main(int argc, char **argv)
     Renderer::setModel(&model);
     if (args.visualMode) {
         if (!glfwInit()) {
+            std::cerr << "[GLFW] Initialization failed. No OpenGL devices available?" << std::endl;
             return 1;
         }
         struct CallTerminate

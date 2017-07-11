@@ -12,6 +12,8 @@ foreach(p CMP0054)
     endif()
 endforeach()
 
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
 include(CMakeDependentOption)
 
 option(OPTION_WITH_RENDERING
@@ -43,6 +45,11 @@ else()
 endif()
 
 function(configure_target targetName)
+    target_compile_options(${targetName} PRIVATE ${OpenMP_CXX_FLAGS})
+    if (NOT MSVC)
+        target_link_libraries(${targetName} PUBLIC ${OpenMP_CXX_FLAGS})
+    endif()
+
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         target_compile_options(${targetName} PRIVATE
             -Wpedantic
@@ -70,12 +77,12 @@ function(configure_target targetName)
         target_compile_options(${targetName} PRIVATE
             -Wpedantic
             -Wall
-            -ffast-math -malign-double
+            -ffast-math
         )
 
         if (NOT PGASUS_PLATFORM_PPC64LE)
             target_compile_options(${targetName} PRIVATE
-                -march=native -mtune=native
+                -march=native -mtune=native  -malign-double
             )
         endif()
 
@@ -95,10 +102,18 @@ function(configure_target targetName)
         )
         target_compile_definitions(${targetName} PRIVATE _CRT_SECURE_NO_WARNINGS)
         set_target_properties(${targetName} PROPERTIES
+            LINK_FLAGS                  "${OpenMP_CXX_FLAGS}"
             LINK_FLAGS_DEBUG            "/STACK:33554432"
             LINK_FLAGS_RELEASE          "/STACK:8388608 /OPT:REF /OPT:ICF /LTCG"
             LINK_FLAGS_RELWITHDEBINFO   "/STACK:8388608 /DEBUG /INCREMENTAL:NO"
         )
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "XL")
+        target_compile_options(${targetName} PRIVATE
+            -std=c++1y
+            $<$<CONFIG:Release>: -O5>
+        )
+    else()
+        message(WARNING "Untested compiler: ${CMAKE_CXX_COMPILER_ID}")
     endif()
 endfunction()
 
@@ -121,12 +136,8 @@ endif()
 add_executable(nbody ${sources})
 configure_target(nbody)
 
-target_link_libraries(nbody
-    PUBLIC
-        OpenMP::OpenMP_CXX
-        glm
-)
 target_include_directories(nbody PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(nbody SYSTEM PUBLIC ${GLM_INCLUDE_DIR})
 target_compile_definitions(nbody
     PUBLIC
         # $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
@@ -135,7 +146,6 @@ target_compile_definitions(nbody
 if (OPTION_WITH_RENDERING)
     target_link_libraries(nbody
         PUBLIC
-            OpenMP::OpenMP_CXX
             ${OPENGL_gl_LIBRARY}
             glfw
             globjects::globjects
