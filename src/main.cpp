@@ -18,18 +18,19 @@
 //MA 02110-1301, USA.
 
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <string>
 
-#include <GLFW/glfw3.h>
-
-#include <globjects/globjects.h>
-
-#include "core.h"
-#include "render.h"
 #include "config.h"
+#include "core.h"
+
+#ifdef OPTION_WITH_RENDERING
+#include <GLFW/glfw3.h>
+#include <globjects/globjects.h>
+#include "render.h"
+#endif
+
 
 using namespace config;
 
@@ -87,11 +88,13 @@ Args::Args(int argc, char **argv)
 int main(int argc, char **argv)
 {
     const Args args(argc, argv);
-    std::srand(0);
+
     Model model;
     model.visualMode = args.visualMode;
     model.setFrameLimit(args.frameLimit);
     model.init(args.bodiesQuantity);
+
+#ifdef OPTION_WITH_RENDERING
     Renderer::setModel(&model);
     if (args.visualMode) {
         if (!glfwInit()) {
@@ -145,8 +148,9 @@ int main(int argc, char **argv)
         }
 
         model.stopAndWait();
-    }
-    else {
+    } else
+#endif
+    {
         model.benchMode();
     }
     return 0;

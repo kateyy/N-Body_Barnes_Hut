@@ -13,6 +13,8 @@
 
 #include <glm/vec3.hpp>
 
+#include "config.h"
+
 using Vec3d = glm::tvec3<double>;
 
 struct Color
@@ -92,8 +94,9 @@ private:
 };
 
 
-/* A coloured pixel. */
+#ifdef OPTION_WITH_PNG_EXPORT
 
+/* A coloured pixel. */
 struct Pixel
 {
     uint8_t red;
@@ -105,7 +108,7 @@ struct Pixel
 class Bitmap
 {
 public:
-    Bitmap();
+    Bitmap(uint32_t width, uint32_t height);
     ~Bitmap();
     uint32_t width() const {
         return m_width;
@@ -115,6 +118,8 @@ public:
     }
     Pixel & at(uint32_t x, uint32_t y);
     const Pixel& at(uint32_t x, uint32_t y) const;
+    uint8_t* rgb8_data();
+    const uint8_t* rgb8_data() const;
 
     bool toPngFile(const std::string & filePath) const;
 private:
@@ -122,6 +127,8 @@ private:
     uint32_t m_height;
     std::unique_ptr<Pixel[]> m_pixels;
 };
+
+#endif
 
 
 /**
@@ -273,8 +280,8 @@ public:
     bool visualMode;
 
 private:
-    void update();
-    void updateUnlocked();
+    bool update();
+    bool updateUnlocked();
     void resetNodes();
     void divideNode(Node * node);
 

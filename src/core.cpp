@@ -6,13 +6,14 @@
 #include <iomanip>
 #include <iostream>
 
-#include <png.h>
-
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/norm.hpp>
 
-#include "config.h"
 #include "core.h"
+
+#ifdef OPTION_WITH_PNG_EXPORT
+#include <png.h>
+#endif
 
 constexpr double colorMax = 3E4;
 using namespace config;
@@ -22,12 +23,13 @@ int64_t timeDiffNanonSecs(timepoint_t start, timepoint_t end)
     return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }
 
-/* Write "bitmap" to a PNG file specified by "path"; returns 0 on
-   success, non-zero on error. */
 
-Bitmap::Bitmap()
-    : m_width{ 0 }
-    , m_height{ 0 }
+#ifdef OPTION_WITH_PNG_EXPORT
+
+Bitmap::Bitmap(uint32_t width, uint32_t height)
+    : m_width{ width }
+    , m_height{ height }
+    , m_pixels{ std::make_unique<Pixel[]>(width * height)}
 {
 }
 
@@ -43,6 +45,16 @@ const Pixel& Bitmap::at(const uint32_t x, const uint32_t y) const
 {
     assert(m_pixels && x < m_width && y < m_height);
     return m_pixels[y * m_width + x];
+}
+
+uint8_t* Bitmap::rgb8_data()
+{
+    return &m_pixels[0].red;
+}
+
+const uint8_t* Bitmap::rgb8_data() const
+{
+    return &m_pixels[0].red;
 }
 
 bool Bitmap::toPngFile(const std::string & filePath) const
@@ -127,6 +139,8 @@ png_create_write_struct_failed:
     fclose(fp);
     return success;
 }
+
+#endif
 
 Node::Node()
     : Node(nullptr,
@@ -496,7 +510,9 @@ void Model::run()
 
     auto loop = [this] () {
         while (!m_stopRequested) {
-            update();
+            if (!update()) {
+                break;
+            }
             std::this_thread::sleep_for(std::chrono::microseconds(1));
         }
     };
@@ -527,21 +543,21 @@ void Model::stopAndWait()
     m_runThread->join();
 }
 
-void Model::update()
+bool Model::update()
 {
     const std::lock_guard<std::mutex> lock{ m_dataMutex };
-    updateUnlocked();
+    return updateUnlocked();
 }
 
-void Model::updateUnlocked()
+bool Model::updateUnlocked()
 {
     const auto startTime = std::chrono::high_resolution_clock::now();
 
     if (m_frameLimit > 0 && m_frameCount == m_frameLimit) {
         m_endTime = std::chrono::high_resolution_clock::now();
         printf("Simulation time Elapsed = %f\n",
-            timeDiffNanonSecs(m_endTime, m_startTime) / 1e9);
-        exit(0);
+            timeDiffNanonSecs(m_startTime, m_endTime) / 1e9);
+        return false;
     }
     m_roots.clear();
     resetNodes();
@@ -588,6 +604,7 @@ void Model::updateUnlocked()
         std::cout << "Compute time: " << std::setw(11) << timeDiffNanonSecs(startTime, endTime) / 1000
             << "micro seconds, Frame: " << m_frameCount << std::endl;
     }
+    return true;
 }
 
 Model::LockedData Model::lockedData()
@@ -596,7 +613,5 @@ Model::LockedData Model::lockedData()
 }
 
 void Model::benchMode() {
-    while (1) {
-        updateUnlocked();
-    }
+    while (updateUnlocked()) {}
 }

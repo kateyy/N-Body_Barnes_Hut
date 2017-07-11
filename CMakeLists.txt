@@ -12,16 +12,24 @@ foreach(p CMP0054)
     endif()
 endforeach()
 
-find_package(OpenMP REQUIRED)
-find_package(OpenGL REQUIRED)
-find_package(glfw3 REQUIRED)
-find_package(glm REQUIRED)
-find_package(glbinding REQUIRED)
-find_package(globjects REQUIRED)
-find_package(PNG REQUIRED)
+include(CMakeDependentOption)
 
-if (NOT OPENGL_GLU_FOUND)
-    message(FATAL_ERROR "OpenGL GLU library is required!")
+option(OPTION_WITH_RENDERING
+    "Rendering support based on OpenGL, GLFW, glbinding and globjects." ON)
+cmake_dependent_option(OPTION_WITH_PNG_EXPORT
+    "Write each frame to a PNG file next to the executable" OFF
+    "OPTION_WITH_RENDERING" OFF)
+
+find_package(OpenMP REQUIRED)
+find_package(glm REQUIRED)
+if (OPTION_WITH_RENDERING)
+    find_package(OpenGL REQUIRED)
+    find_package(glfw3 REQUIRED)
+    find_package(glbinding REQUIRED)
+    find_package(globjects REQUIRED)
+endif()
+if (OPTION_WITH_PNG_EXPORT)
+    find_package(PNG REQUIRED)
 endif()
 
 set(PGASUS_PLATFORM_X86_64 0)
@@ -94,17 +102,21 @@ function(configure_target targetName)
     endif()
 endfunction()
 
-
+set(CONFIG_FILE "${CMAKE_CURRENT_BINARY_DIR}/config.h")
+configure_file("cmake/config.h.in" ${CONFIG_FILE})
 
 set(sources
-    src/config.h
+    ${CONFIG_FILE}
     src/core.h
     src/core.cpp
     src/main.cpp
-    src/render.h
-    src/render.cpp
-    # src/viewer.cpp
 )
+if (OPTION_WITH_RENDERING)
+    list(APPEND sources
+        src/render.h
+        src/render.cpp
+    )
+endif()
 
 add_executable(nbody ${sources})
 configure_target(nbody)
@@ -112,23 +124,28 @@ configure_target(nbody)
 target_link_libraries(nbody
     PUBLIC
         OpenMP::OpenMP_CXX
-        ${OPENGL_gl_LIBRARY}
-        glfw
         glm
-        globjects::globjects
-        ${PNG_LIBRARIES}
 )
-
-# For libraries without imported targets: manual includes and definitions
-target_include_directories(nbody SYSTEM
-    PRIVATE
-        ${OPENGL_INCLUDE_DIR}
-        ${PNG_INCLUDE_DIRS}
-)
+target_include_directories(nbody PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(nbody
-    PRIVATE
-        ${PNG_DEFINITIONS}
-        GLFW_INCLUDE_NONE
     PUBLIC
         # $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
 )
+
+if (OPTION_WITH_RENDERING)
+    target_link_libraries(nbody
+        PUBLIC
+            OpenMP::OpenMP_CXX
+            ${OPENGL_gl_LIBRARY}
+            glfw
+            globjects::globjects
+    )
+    target_include_directories(nbody SYSTEM PRIVATE ${OPENGL_INCLUDE_DIR})
+    target_compile_definitions(nbody PRIVATE GLFW_INCLUDE_NONE)
+endif()
+
+if (OPTION_WITH_PNG_EXPORT)
+    target_link_libraries(nbody PUBLIC ${PNG_LIBRARIES})
+    target_include_directories(nbody SYSTEM PRIVATE ${PNG_INCLUDE_DIRS})
+    target_compile_definitions(nbody PRIVATE ${PNG_DEFINITIONS})
+endif()

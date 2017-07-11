@@ -462,40 +462,32 @@ bool Renderer::drawScene_mem()
     m_context->bodiesVAO.drawArrays(GL_POINTS, 0, static_cast<GLsizei>(toGpuData.size()));
 
     //Tree rendering
-    if (!m_renderTree) {
-        return true;
+    if (m_renderTree) {
+        if (m_context->nodesVBOElementCount < toGpuNodeData.size()) {
+            m_context->nodesVBO.setData(toGpuNodeData, GL_STATIC_DRAW);
+            m_context->nodesVBOElementCount = toGpuNodeData.size();
+        }
+        else {
+            m_context->nodesVBO.setSubData(toGpuNodeData, 0);
+        }
+        if (m_context->nodesIBOElementCount < toGpuNodeIndexes.size()) {
+            m_context->nodesIBO.setData(toGpuNodeIndexes, GL_STATIC_DRAW);
+            m_context->nodesIBOElementCount = toGpuNodeIndexes.size();
+        }
+        else {
+            m_context->nodesIBO.setSubData(toGpuNodeIndexes, 0);
+        }
+
+        glEnable(GL_PRIMITIVE_RESTART);
+        m_context->nodesVAO.drawElements(GL_LINE_STRIP, static_cast<GLsizei>(toGpuNodeIndexes.size()), GL_UNSIGNED_INT);
+        glDisable(GL_PRIMITIVE_RESTART);
     }
 
-    if (m_context->nodesVBOElementCount < toGpuNodeData.size()) {
-        m_context->nodesVBO.setData(toGpuNodeData, GL_STATIC_DRAW);
-        m_context->nodesVBOElementCount = toGpuNodeData.size();
-    }
-    else {
-        m_context->nodesVBO.setSubData(toGpuNodeData, 0);
-    }
-    if (m_context->nodesIBOElementCount < toGpuNodeIndexes.size()) {
-        m_context->nodesIBO.setData(toGpuNodeIndexes, GL_STATIC_DRAW);
-        m_context->nodesIBOElementCount = toGpuNodeIndexes.size();
-    }
-    else {
-        m_context->nodesIBO.setSubData(toGpuNodeIndexes, 0);
-    }
-
-    glEnable(GL_PRIMITIVE_RESTART);
-    m_context->nodesVAO.drawElements(GL_LINE_STRIP, static_cast<GLsizei>(toGpuNodeIndexes.size()), GL_UNSIGNED_INT);
-    glDisable(GL_PRIMITIVE_RESTART);
-
-#if 0
-    glReadPixels(0, 0, HEIGHT, WIDTH, GL_RGB, GL_UNSIGNED_BYTE, pRGB);
-    free(image.pixels);
-    image.pixels = malloc(sizeof(pixel_t) * WIDTH * HEIGHT);
-    for (i = 0; i < WIDTH * HEIGHT; i++) {
-        image.pixels[i].red = pRGB[i * 3];
-        image.pixels[i].green = pRGB[i * 3 + 1];
-        image.pixels[i].blue = pRGB[i * 3 + 2];
-    }
-    sprintf(buf, "%i.png", frame++);
-    save_png_to_file(&image, buf);
+#ifdef OPTION_WITH_PNG_EXPORT
+    Bitmap image{ uint32_t(m_winSize.x), uint32_t(m_winSize.y) };
+    glReadPixels(0, 0, m_winSize.x, m_winSize.y, GL_RGB, GL_UNSIGNED_BYTE,
+        image.rgb8_data());
+    image.toPngFile(std::to_string(m_model->frameCount()) + ".png");
 #endif
 
     if (PRINT_TIMINGS)
