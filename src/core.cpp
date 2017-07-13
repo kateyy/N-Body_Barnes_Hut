@@ -130,24 +130,23 @@ void Model::divideNode(const NodeIndex_t nodeIndex)
     if (nodeIndex == invalidNodeIdx) {
         return;
     }
-    Node &node = m_nodes[nodeIndex];
-    if (node.bodies_quantity() == 1) {
+    if (m_nodes[nodeIndex].bodies_quantity() == 1) {
         m_rootIndices.push_back(nodeIndex);
         return;
     }
-    if (node.bodies_quantity() == 0) {
+    if (m_nodes[nodeIndex].bodies_quantity() == 0) {
         return;
     }
-    const double sx = node.start.x;
-    const double sy = node.start.y;
-    const double sz = node.start.z;
-    const double ex = node.end.x;
-    const double ey = node.end.y;
-    const double ez = node.end.z;
+    const double sx = m_nodes[nodeIndex].start.x;
+    const double sy = m_nodes[nodeIndex].start.y;
+    const double sz = m_nodes[nodeIndex].start.z;
+    const double ex = m_nodes[nodeIndex].end.x;
+    const double ey = m_nodes[nodeIndex].end.y;
+    const double ez = m_nodes[nodeIndex].end.z;
     const double mx = (sx + ex) / 2.0;
     const double my = (sy + ey) / 2.0;
     const double mz = (sz + ez) / 2.0;
-    for (const uint32_t bodyIndex : node.bodies()) {
+    for (const uint32_t bodyIndex : m_nodes[nodeIndex].bodies()) {
         const Body *body = &m_bodies[bodyIndex];
         if (body->position.x < sx
             || body->position.x >= ex
@@ -159,88 +158,88 @@ void Model::divideNode(const NodeIndex_t nodeIndex)
         if (body->position.x < mx) {
             if (body->position.y < my) {
                 if (body->position.z < mz) {
-                    if (node.UNW == invalidNodeIdx) {
+                    if (m_nodes[nodeIndex].UNW == invalidNodeIdx) {
                         m_nodes.emplace_back(nodeIndex,
-                            sx, sy, sz, mx, my, mz, node.depth + 1);
-                        node.UNW = NodeIndex_t(m_nodes.size() - 1);
+                            sx, sy, sz, mx, my, mz, m_nodes[nodeIndex].depth + 1);
+                        m_nodes[nodeIndex].UNW = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    m_nodes[node.UNW].addBody(indexOfBody(body));
+                    m_nodes[m_nodes[nodeIndex].UNW].addBody(indexOfBody(body));
                 }
                 else {    // z >= mz
-                    if (node.DNW == invalidNodeIdx) {
+                    if (m_nodes[nodeIndex].DNW == invalidNodeIdx) {
                         m_nodes.emplace_back(nodeIndex,
-                            sx, sy, mz, mx, my, ez, node.depth + 1);
-                        node.DNW = NodeIndex_t(m_nodes.size() - 1);
+                            sx, sy, mz, mx, my, ez, m_nodes[nodeIndex].depth + 1);
+                        m_nodes[nodeIndex].DNW = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    m_nodes[node.DNW].addBody(indexOfBody(body));
+                    m_nodes[m_nodes[nodeIndex].DNW].addBody(indexOfBody(body));
                 }
             }
             else {      // y >= my
                 if (body->position.z < mz) {
-                    if (node.USW == invalidNodeIdx) {
+                    if (m_nodes[nodeIndex].USW == invalidNodeIdx) {
                         m_nodes.emplace_back(nodeIndex,
-                            sx, my, sz, mx, ey, mz, node.depth + 1);
-                        node.USW = NodeIndex_t(m_nodes.size() - 1);
+                            sx, my, sz, mx, ey, mz, m_nodes[nodeIndex].depth + 1);
+                        m_nodes[nodeIndex].USW = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    m_nodes[node.USW].addBody(indexOfBody(body));
+                    m_nodes[m_nodes[nodeIndex].USW].addBody(indexOfBody(body));
                 }
                 else {    // z >= mz
-                    if (node.DSW == invalidNodeIdx) {
+                    if (m_nodes[nodeIndex].DSW == invalidNodeIdx) {
                         m_nodes.emplace_back(nodeIndex,
-                            sx, my, mz, mx, ey, ez, node.depth + 1);
-                        node.DSW = NodeIndex_t(m_nodes.size() - 1);
+                            sx, my, mz, mx, ey, ez, m_nodes[nodeIndex].depth + 1);
+                        m_nodes[nodeIndex].DSW = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    m_nodes[node.DSW].addBody(indexOfBody(body));
+                    m_nodes[m_nodes[nodeIndex].DSW].addBody(indexOfBody(body));
                 }
             }
         }
         else {      // x >= mx
             if (body->position.y < my) {
                 if (body->position.z < mz) {
-                    if (node.UNE == invalidNodeIdx) {
+                    if (m_nodes[nodeIndex].UNE == invalidNodeIdx) {
                         m_nodes.emplace_back(nodeIndex,
-                            mx, sy, sz, ex, my, mz, node.depth + 1);
-                        node.UNE = NodeIndex_t(m_nodes.size() - 1);
+                            mx, sy, sz, ex, my, mz, m_nodes[nodeIndex].depth + 1);
+                        m_nodes[nodeIndex].UNE = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    m_nodes[node.UNE].addBody(indexOfBody(body));
+                    m_nodes[m_nodes[nodeIndex].UNE].addBody(indexOfBody(body));
                 }
                 else {    // z >= mz
-                    if (node.DNE == invalidNodeIdx) {
+                    if (m_nodes[nodeIndex].DNE == invalidNodeIdx) {
                         m_nodes.emplace_back(nodeIndex,
-                            mx, sy, mz, ex, my, ez, node.depth + 1);
-                        node.DNE = NodeIndex_t(m_nodes.size() - 1);
+                            mx, sy, mz, ex, my, ez, m_nodes[nodeIndex].depth + 1);
+                        m_nodes[nodeIndex].DNE = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    m_nodes[node.DNE].addBody(indexOfBody(body));
+                    m_nodes[m_nodes[nodeIndex].DNE].addBody(indexOfBody(body));
                 }
             }
             else {      // y >= my
                 if (body->position.z < mz) {
-                    if (node.USE == invalidNodeIdx) {
+                    if (m_nodes[nodeIndex].USE == invalidNodeIdx) {
                         m_nodes.emplace_back(nodeIndex,
-                            mx, my, sz, ex, ey, mz, node.depth + 1);
-                        node.USE = NodeIndex_t(m_nodes.size() - 1);
+                            mx, my, sz, ex, ey, mz, m_nodes[nodeIndex].depth + 1);
+                        m_nodes[nodeIndex].USE = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    m_nodes[node.USE].addBody(indexOfBody(body));
+                    m_nodes[m_nodes[nodeIndex].USE].addBody(indexOfBody(body));
                 }
                 else {    // z >= mz
-                    if (node.DSE == invalidNodeIdx) {
+                    if (m_nodes[nodeIndex].DSE == invalidNodeIdx) {
                         m_nodes.emplace_back(nodeIndex,
-                            mx, my, mz, ex, ey, ez, node.depth + 1);
-                        node.DSE = NodeIndex_t(m_nodes.size() - 1);
+                            mx, my, mz, ex, ey, ez, m_nodes[nodeIndex].depth + 1);
+                        m_nodes[nodeIndex].DSE = NodeIndex_t(m_nodes.size() - 1);
                     }
-                    m_nodes[node.DSE].addBody(indexOfBody(body));
+                    m_nodes[m_nodes[nodeIndex].DSE].addBody(indexOfBody(body));
                 }
             }
         }
     }
-    divideNode(node.UNW);
-    divideNode(node.UNE);
-    divideNode(node.USW);
-    divideNode(node.USE);
-    divideNode(node.DNW);
-    divideNode(node.DNE);
-    divideNode(node.DSW);
-    divideNode(node.DSE);
+    divideNode(m_nodes[nodeIndex].UNW);
+    divideNode(m_nodes[nodeIndex].UNE);
+    divideNode(m_nodes[nodeIndex].USW);
+    divideNode(m_nodes[nodeIndex].USE);
+    divideNode(m_nodes[nodeIndex].DNW);
+    divideNode(m_nodes[nodeIndex].DNE);
+    divideNode(m_nodes[nodeIndex].DSW);
+    divideNode(m_nodes[nodeIndex].DSE);
 }
 
 void Node::updateCenterOfMass(const std::vector<Body> &allBodies)

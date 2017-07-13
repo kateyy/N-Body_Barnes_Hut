@@ -138,13 +138,13 @@ private:
     void forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, bool inverse);
     NodeIndex_t indexOfNode(const Node *node) const {
         assert(node >= &m_nodes.front());
-        const NodeIndex_t index = node - &m_nodes.front();
+        const size_t index = node - &m_nodes.front();
         assert(index < m_nodes.size() && &m_nodes[index] == node);
         return static_cast<NodeIndex_t>(index);
     }
     BodyIndex_t indexOfBody(const Body *body) const {
         assert(body >= &m_bodies.front());
-        const BodyIndex_t index = body - &m_bodies.front();
+        const size_t index = body - &m_bodies.front();
         assert(index < m_bodies.size() && &m_bodies[index] == body);
         return static_cast<BodyIndex_t>(index);
     }

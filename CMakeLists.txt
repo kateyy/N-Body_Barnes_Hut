@@ -54,7 +54,7 @@ endif()
 function(configure_target targetName)
     target_compile_options(${targetName} PRIVATE ${OpenMP_CXX_FLAGS})
     if (NOT MSVC)
-        target_link_libraries(${targetName} PUBLIC ${OpenMP_CXX_FLAGS})
+        target_link_libraries(${targetName} PUBLIC ${OpenMP_CXX_LIB_NAMES})
     endif()
 
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -122,7 +122,7 @@ function(configure_target targetName)
         )
         target_compile_definitions(${targetName} PRIVATE _CRT_SECURE_NO_WARNINGS)
         set_target_properties(${targetName} PROPERTIES
-            LINK_FLAGS                  "${OpenMP_CXX_FLAGS}"
+            LINK_FLAGS                  "${OpenMP_CXX_LIB_NAMES}"
             LINK_FLAGS_DEBUG            "/STACK:33554432"
             LINK_FLAGS_RELEASE          "/STACK:8388608 /OPT:REF /OPT:ICF /LTCG"
             LINK_FLAGS_RELWITHDEBINFO   "/STACK:8388608 /DEBUG /INCREMENTAL:NO"

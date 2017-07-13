@@ -19,6 +19,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <iostream>
 #include <string>
 
@@ -38,7 +39,7 @@ struct Args
 {
     Args(int argc, char **argv);
     size_t bodiesQuantity = BODIES_QUANTITY;
-    size_t frameLimit = -1;
+    size_t frameLimit = std::numeric_limits<size_t>::max();
     bool visualMode = true;
 };
 
