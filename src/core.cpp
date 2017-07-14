@@ -3,9 +3,10 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
-#include <limits>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <map>
 
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/norm.hpp>
@@ -19,6 +20,84 @@ namespace
 {
 constexpr BodyIndex_t invalidBodyIdx = std::numeric_limits<BodyIndex_t>::max();
 constexpr NodeIndex_t invalidNodeIdx = std::numeric_limits<NodeIndex_t>::max();
+
+constexpr double defaultInitRadius = 60E3 * LY;
+
+void initBodiesSphereExt(std::vector<Body> &bodies, const double radius)
+{
+    const size_t numBodies = bodies.size();
+    for (size_t i = 0; i < numBodies; ++i) {
+        Body &body = bodies[i];
+        body.position = glm::ballRand<double>(radius);
+        body.force = { 0, 0, 0 };
+        body.mass = double(TOTAL_MASS) / numBodies;
+        body.speed = { 0, 0, 0 };
+    }
+}
+
+void initBodiesSphere(std::vector<Body> &bodies)
+{
+    initBodiesSphereExt(bodies, defaultInitRadius);
+}
+
+void initBodies4Spheres(std::vector<Body> &bodies)
+{
+    const size_t numBodies = bodies.size();
+
+    initBodiesSphereExt(bodies, defaultInitRadius);
+
+    const Vec3d offset = 4.0 * Vec3d{ defaultInitRadius, defaultInitRadius, 0.0 };
+
+    for (size_t i = 0; i < numBodies / 4; ++i) {
+        bodies[i].position += offset;
+    }
+    for (size_t i = numBodies / 4; i < numBodies / 2; ++i) {
+        bodies[i].position += offset * Vec3d(-1.0, 1.0, 0.0);
+    }
+    for (size_t i = numBodies / 2; i < 3 * numBodies / 4; ++i) {
+        bodies[i].position += offset * Vec3d(1.0, -1.0, 0.0);
+    }
+    for (size_t i = 3 * numBodies / 4; i < numBodies; ++i) {
+        bodies[i].position += offset * Vec3d(-1.0, -1.0, 0.0);
+    }
+}
+
+bool initializeBodies(std::vector<Body> &bodies, std::string scheme)
+{
+    for (char & c : scheme) {
+        if (c >= 'A' && c <= 'Z') {
+            c = (c - 'A') + 'a';
+        }
+    }
+
+    std::map<std::string, std::function<void(std::vector<Body> &)>> schemes = {
+        { "sphere", &initBodiesSphere },
+        { "4spheres", &initBodies4Spheres },
+    };
+
+    if (scheme.empty()) {
+        scheme = "sphere";
+    }
+
+    const auto it = schemes.find(scheme);
+    if (it == schemes.end()) {
+        std::cerr << "Invalid body initialization scheme: " << scheme
+            << " Available schemes are: ";
+        size_t i = 0;
+        for (const auto & pair : schemes) {
+            std::cerr << pair.first;
+            if (++i != schemes.size()) {
+                std::cerr << ", ";
+            }
+        }
+        std::cerr << std::endl;
+        return false;
+    }
+
+    it->second(bodies);
+    return true;
+}
+
 }
 
 int64_t timeDiffNanonSecs(timepoint_t start, timepoint_t end)
@@ -299,7 +378,8 @@ void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, 
     return;
 }
 
-void Model::init(const size_t numBodies, const bool writeToFile)
+bool Model::init(const std::string& bodiesInitScheme,
+    const size_t numBodies, const bool writeToFile)
 {
     m_frameCount = 0;
     if (writeToFile) {
@@ -314,22 +394,17 @@ void Model::init(const size_t numBodies, const bool writeToFile)
         SIZE_OF_SIMULATION * 30, SIZE_OF_SIMULATION * 30, SIZE_OF_SIMULATION * 30,
         0);
 
-    constexpr double radius = 60E3 * LY;
+    if (!initializeBodies(m_bodies, bodiesInitScheme)) {
+        return false;
+    }
 
     for (BodyIndex_t i = 0; i < m_bodies.size(); ++i) {
-        Body& body = m_bodies[i];
-        body.position = glm::ballRand<double>(radius);
-        body.force.x = 0;
-        body.force.y = 0;
-        body.force.z = 0;
-        body.mass = double(TOTAL_MASS) / numBodies;
-        body.speed.x = 0;
-        body.speed.y = 0;
-        body.speed.z = 0;
         m_nodes[0].addBody(i);
     }
 
     m_startTime = std::chrono::high_resolution_clock::now();
+
+    return true;
 }
 
 void Model::run()

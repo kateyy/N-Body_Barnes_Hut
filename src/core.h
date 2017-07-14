@@ -85,7 +85,10 @@ public:
     void setFrameLimit(size_t frameLimit) {
         m_frameLimit = frameLimit;
     }
-    void init(size_t numBodies, bool writeToFile = false);
+    bool init(
+        const std::string& bodiesInitScheme,
+        size_t numBodies,
+        bool writeToFile = false);
 
     /**
      * Run the model in a separate thread, which is managed internally.

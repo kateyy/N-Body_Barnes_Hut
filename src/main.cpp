@@ -19,7 +19,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <limits>
 #include <iostream>
 #include <string>
 
@@ -39,49 +38,49 @@ struct Args
 {
     Args(int argc, char **argv);
     size_t bodiesQuantity = BODIES_QUANTITY;
-    size_t frameLimit = std::numeric_limits<size_t>::max();
+    size_t frameLimit = 0;
     bool visualMode = true;
+    std::string bodiesInitScheme;
 };
 
 Args::Args(int argc, char **argv)
 {
-    int ch = 0;
-
-    for (int n = 1; n < argc; n++) {	/* Scan through args. */
-        switch ((int)argv[n][0]) {	/* Check for option character. */
-        case '-':
-        case '/':
-        {
-            const size_t len = strlen(argv[n]);
-            for (size_t m = 1; m < len; ++m) {	/* Scan through options. */
-                ch = (int)argv[n][m];
-                switch (ch) {
-                case 'n':		/* Legal options. */
-                case 'N':
-                case 'f':
-                case 'F':
-                case 'b':
-                case 'B':
-                    break;
-                default:
-                    printf("Illegal option code = %c\n", ch);
-                    exit(1);
-                    break;
-                }
-            }
-            break;
+    for (int n = 1; n < argc; n+=2) {   /* Scan through args. */
+        if (argv[n][0] != '-' && argv[n][0] != '/') {
+            std::cerr << "Options must begin with - or /" << std::endl;
+            exit(1);
         }
-        default:
-            if (ch == 'n' || ch == 'N') {
-                bodiesQuantity = std::stoull(argv[n]);
-            }
-            else if (ch == 'f' || ch == 'F') {
-                frameLimit = std::stoull(argv[n]);
-            }
-            else if (ch == 'b' || ch == 'B') {
-                visualMode = std::atoi(argv[n]) != 0;
-            }
+        const char option = argv[n][1] == '\0' ? ' ' : argv[n][1];
+        if (n + 1 == argc) {
+            std::cerr << "No value given for option " << option << std::endl;
+            exit(1);
+        }
+        const char * value = argv[n+1];
+        switch (option) {
+        case 'n':
+        case 'N':
+            bodiesQuantity = std::stoull(value);
             break;
+        case 'f':
+        case 'F':
+            frameLimit = std::stoull(value);
+            break;
+        case 'b':
+        case 'B':
+            visualMode = std::atoi(value) != 0;
+            break;
+        case 'i':
+        case 'I':
+            bodiesInitScheme = value;
+            break;
+        default:
+            std::cerr << "Invalid option: " << option << std::endl;
+            std::cerr << "Valid options are:" << std::endl
+                << "[-n|-N] XY - Create XY bodies. Default: " << BODIES_QUANTITY << std::endl
+                << "[-f|-F] XY - Stop after XY frames. Default: Don't stop." << std::endl
+                << "[-b|-B] 0|1 - Enable visual mode. Default: Enabled." << std::endl
+                << "[-i|-I] ABC - Initialization scheme for the bodies." << std::endl;
+            exit(1);
         }
     }
 }
@@ -93,7 +92,9 @@ int main(int argc, char **argv)
     Model model;
     model.visualMode = args.visualMode;
     model.setFrameLimit(args.frameLimit);
-    model.init(args.bodiesQuantity);
+    if (!model.init(args.bodiesInitScheme, args.bodiesQuantity)) {
+        return 2;
+    }
 
 #ifdef OPTION_WITH_RENDERING
     Renderer::setModel(&model);
