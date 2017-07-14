@@ -54,7 +54,10 @@ endif()
 function(configure_target targetName)
     target_compile_options(${targetName} PRIVATE ${OpenMP_CXX_FLAGS})
     if (NOT MSVC)
-        target_link_libraries(${targetName} PUBLIC ${OpenMP_CXX_LIB_NAMES})
+        target_link_libraries(${targetName} PUBLIC
+            ${OpenMP_CXX_LIB_NAMES}
+            ${OpenMP_CXX_FLAGS} # older systems/CMake versions require this flag here
+        )
     endif()
 
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
