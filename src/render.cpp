@@ -220,7 +220,6 @@ void Renderer::init(GLFWwindow *window)
     glDepthFunc(GL_LESS);
     glClearColor(0.1, 0.1, 0.3, 1.0);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    //glPointSize(2.f);
     glPrimitiveRestartIndex(primitiveRestartIdx);
 
     instance().m_context = std::make_unique<Context>();
@@ -297,11 +296,23 @@ void Renderer::handleKeypress(GLFWwindow *window, int key, int scancode, int act
     instance().handleKeypress_mem(window, key, scancode, action, modes);
 }
 
-void Renderer::handleKeypress_mem(GLFWwindow * /*window*/, int key, int /*scancode*/, int action, int /*modes*/)
+void Renderer::handleKeypress_mem(GLFWwindow * /*window*/, int key, int /*scancode*/, int action, int mods)
 {
     if (action != GLFW_RELEASE) {
         return;
     }
+
+    const bool ctrl_pressed = (mods & GLFW_MOD_CONTROL) != 0;
+
+    auto changePointSize = [] (const bool increase) {
+        float pointSize = 1.0f, granularity = 1.f;
+        glGetFloatv(GL_POINT_SIZE, &pointSize);
+        glGetFloatv(GL_POINT_SIZE_GRANULARITY, &granularity);
+        pointSize = pointSize + (increase ? granularity : - granularity);
+        std::cout << "Point size: " << pointSize << std::endl;
+        glPointSize(pointSize);
+    };
+
     switch (key) {
     case GLFW_KEY_ESCAPE:
         glfwSetWindowShouldClose(instance().m_window, true);
@@ -313,10 +324,18 @@ void Renderer::handleKeypress_mem(GLFWwindow * /*window*/, int key, int /*scanco
         m_angleY -= 2;
         break;
     case GLFW_KEY_UP:
-        m_angleX += 2;
+        if (ctrl_pressed) {
+            changePointSize(true);
+        } else {
+            m_angleX += 2;
+        }
         break;
     case GLFW_KEY_DOWN:
-        m_angleX -= 2;
+        if (ctrl_pressed) {
+            changePointSize(false);
+        } else {
+            m_angleX -= 2;
+        }
         break;
     case GLFW_KEY_P:
     case GLFW_KEY_F12:
@@ -340,6 +359,11 @@ void Renderer::handleKeypress_mem(GLFWwindow * /*window*/, int key, int /*scanco
     case GLFW_KEY_T:
         m_renderTree = !m_renderTree;
         break;
+    case GLFW_KEY_LEFT_CONTROL:
+    case GLFW_KEY_RIGHT_CONTROL:
+        break;
+    default:
+        std::cerr << "Unmapped key pressed: " << key << std::endl;
     }
 
     //angleX += 0.5;
