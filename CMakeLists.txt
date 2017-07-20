@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-project(N-Body_Barnes_Hut CXX)
+project(N-Body_Barnes_Hut C CXX)
 
 foreach(p CMP0054)
     if (POLICY ${p})
@@ -185,3 +185,12 @@ if (OPTION_WITH_PNG_EXPORT)
     target_include_directories(nbody SYSTEM PRIVATE ${PNG_INCLUDE_DIRS})
     target_compile_definitions(nbody PRIVATE ${PNG_DEFINITIONS})
 endif()
+
+
+add_executable(nbody_c
+    src/c/config.h
+    src/c/core.h
+    src/c/core.c
+    src/c/main.c
+)
+configure_target(nbody_c)
