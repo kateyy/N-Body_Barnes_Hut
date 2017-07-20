@@ -59,6 +59,7 @@ function(configure_target targetName)
             ${OpenMP_CXX_FLAGS} # older systems/CMake versions require this flag here
         )
     endif()
+    # target_compile_definitions(${targetName} PRIVATE GLM_FORCE_INLINE)
 
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         target_compile_options(${targetName} PRIVATE

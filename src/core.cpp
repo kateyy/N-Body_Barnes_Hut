@@ -2,11 +2,14 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
+#include <sstream>
+#include <string>
 
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/norm.hpp>
@@ -378,24 +381,53 @@ void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, 
     return;
 }
 
-bool Model::init(const std::string& bodiesInitScheme,
-    const size_t numBodies, const bool writeToFile)
+bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 {
     m_frameCount = 0;
-    if (writeToFile) {
-        m_outputPositions_f = std::fopen("positionData.csv", "wb");
+    if (!outputFileName.empty()) {
+        m_outputPositions_f = std::fopen(outputFileName.c_str(), "wb");
     }
-    m_nodes.reserve(numBodies);
-    m_rootIndices.reserve(numBodies);
-    m_bodies.resize(numBodies);
 
     m_nodes.emplace_back(invalidNodeIdx,
         -SIZE_OF_SIMULATION * 30, -SIZE_OF_SIMULATION * 30, -SIZE_OF_SIMULATION * 30,
         SIZE_OF_SIMULATION * 30, SIZE_OF_SIMULATION * 30, SIZE_OF_SIMULATION * 30,
         0);
 
-    if (!initializeBodies(m_bodies, bodiesInitScheme)) {
-        return false;
+    if (!inputFileName.empty()) {
+        std::ifstream file(inputFileName);
+        if (!file.good()) {
+            std::cerr << "Invalid input file: " << inputFileName << std::endl;
+            return false;
+        }
+        std::string line;
+        Body body;
+        while (!file.eof()) {
+            std::getline(file, line);
+            if (line.empty()) {
+                continue;
+            }
+            std::stringstream lineStream(line);
+            lineStream >> body.position.x >> body.position.y >> body.position.z;
+            lineStream >> body.mass;
+            lineStream >> body.speed.x >> body.speed.y >> body.speed.z;
+            if (!lineStream.eof()) {
+                std::cerr << "Invalid line in input file: " << line << std::endl;
+                return false;
+            }
+            m_bodies.emplace_back(body);
+        }
+        m_bodies.shrink_to_fit();
+        m_nodes.reserve(m_bodies.size());
+        m_rootIndices.reserve(m_bodies.size());
+
+    }
+    else {
+        m_nodes.reserve(numBodies);
+        m_rootIndices.reserve(numBodies);
+        m_bodies.resize(numBodies);
+        if (!initializeBodies(m_bodies, bodiesInitScheme)) {
+            return false;
+        }
     }
 
     for (BodyIndex_t i = 0; i < m_bodies.size(); ++i) {
@@ -480,9 +512,6 @@ bool Model::updateUnlocked()
             forceOverNode(rootIdx, invalidNodeIdx, m_bodies[root.bodies()[bodyIdx]], false);
         }
     }
-    if (m_outputPositions_f) {
-        fprintf(m_outputPositions_f, "FF\n");
-    }
     #pragma omp parallel for
     for (ptrdiff_t i = 0; i < ptrdiff_t(m_bodies.size()); i++) {
         Body& body = m_bodies[i];
@@ -491,15 +520,7 @@ bool Model::updateUnlocked()
         body.position += body.speed * 50E12;
         body.force = { 0, 0, 0 };
     }
-    if (m_outputPositions_f) {
-        for (const Body& body : m_bodies) {
-            fprintf(m_outputPositions_f, "%i,%i,%i,%i\n",
-                int(body.position.x * 10E-16),
-                int(body.position.y * 10E-16),
-                int(body.position.z * 10E-16),
-                int(body.acel));
-        }
-    }
+    exportBodies();
     m_frameCount++;
     if (PRINT_TIMINGS)
     {
@@ -517,4 +538,18 @@ Model::LockedData Model::lockedData()
 
 void Model::benchMode() {
     while (updateUnlocked()) {}
+}
+
+bool Model::exportBodies()
+{
+    if (!m_outputPositions_f) {
+        return false;
+    }
+    for (const Body& body : m_bodies) {
+        fprintf(m_outputPositions_f, "%g %g %g %g %g %g %g\n",
+            body.position.x, body.position.y, body.position.z,
+            body.mass,
+            body.speed.x, body.speed.y, body.speed.z);
+    }
+    return true;
 }

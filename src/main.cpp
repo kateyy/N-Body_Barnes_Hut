@@ -38,20 +38,27 @@ struct Args
 {
     Args(int argc, char **argv);
     size_t bodiesQuantity = BODIES_QUANTITY;
-    size_t frameLimit = 0;
+    size_t iterations = 0;
     bool visualMode = true;
     std::string bodiesInitScheme;
+    std::string inputFileName;
+    std::string outputFileName;
+    bool generatorMode = false;
 
     void printHelp() {
         std::cerr << "Usage:" << std::endl
             << "[-h|-H] - Print this help." << std::endl
+            << "[-i|-I] XY - Stop after XY iterations. Default: Don't stop." << std::endl
+            << "[-b|-B] ABC - Initialization scheme for the bodies." << std::endl
             << "[-n|-N] XY - Create XY bodies. Default: " << BODIES_QUANTITY << std::endl
-            << "[-f|-F] XY - Stop after XY iterations. Default: Don't stop." << std::endl
-            << "[-i|-I] ABC - Initialization scheme for the bodies." << std::endl
+            << "[-f|-F] inputFileName.xyzmabc - Import bodies instead of generating them." << std::endl
+            << "        Line format: position.x y z mass speed.x y z" << std::endl
+            << "[-o|-o] outputFileName.xyzmabc - Export bodies after each iteration." << std::endl
+            << "[-g|-G] - Generator mode: generate bodies, export to outputFileName and exit." << std::endl
 #ifdef OPTION_WITH_RENDERING
-            << "[-b|-B] 0|1 - Enable visual mode. Default: Enabled." << std::endl;
+            << "[-v|-V] 0|1 - Enable visual mode. Default: Enabled." << std::endl;
 #else
-            << "[-b|-B] 0|1 - Enable visual mode. NOT AVAILBLE IN THE CURRENT BUILD." << std::endl;
+            << "[-v|-V] 0|1 - Enable visual mode. NOT AVAILBLE IN THE CURRENT BUILD." << std::endl;
 #endif
     }
 };
@@ -74,8 +81,12 @@ Args::Args(int argc, char **argv)
         case 'H':
             printHelp();
             exit(0);
-        case 'i':
-        case 'I':
+        case 'g':
+        case 'G':
+            generatorMode = true;
+            continue;
+        case 'b':
+        case 'B':
             bodiesInitScheme = value ? value : "(unspecified)";
             if (value) {
                 ++n;
@@ -95,10 +106,18 @@ Args::Args(int argc, char **argv)
             break;
         case 'f':
         case 'F':
-            frameLimit = std::stoull(value);
+            inputFileName = value;
             break;
-        case 'b':
-        case 'B':
+        case 'o':
+        case 'O':
+            outputFileName = value;
+            break;
+        case 'i':
+        case 'I':
+            iterations = std::stoull(value);
+            break;
+        case 'v':
+        case 'V':
             visualMode = std::atoi(value) != 0;
             break;
         default:
@@ -116,9 +135,14 @@ int main(int argc, char **argv)
 
     Model model;
     model.visualMode = args.visualMode;
-    model.setFrameLimit(args.frameLimit);
+    model.setFrameLimit(args.iterations);
+    model.inputFileName = args.inputFileName;
+    model.outputFileName = args.outputFileName;
     if (!model.init(args.bodiesInitScheme, args.bodiesQuantity)) {
         return 2;
+    }
+    if (args.generatorMode) {
+        return model.exportBodies() ? 0 : 3;
     }
 
 #ifdef OPTION_WITH_RENDERING

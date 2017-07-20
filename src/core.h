@@ -87,8 +87,7 @@ public:
     }
     bool init(
         const std::string& bodiesInitScheme,
-        size_t numBodies,
-        bool writeToFile = false);
+        size_t numBodies);
 
     /**
      * Run the model in a separate thread, which is managed internally.
@@ -128,10 +127,15 @@ public:
      * using the bench mode.
      */
     void benchMode();
+    
+    /** Write current bodies to the outputFileName. */
+    bool exportBodies();
 
 
     bool render;
     bool visualMode;
+    std::string inputFileName;
+    std::string outputFileName;
 
 private:
     bool update();
