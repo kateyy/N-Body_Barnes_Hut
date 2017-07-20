@@ -41,21 +41,53 @@ struct Args
     size_t frameLimit = 0;
     bool visualMode = true;
     std::string bodiesInitScheme;
+
+    void printHelp() {
+        std::cerr << "Usage:" << std::endl
+            << "[-h|-H] - Print this help." << std::endl
+            << "[-n|-N] XY - Create XY bodies. Default: " << BODIES_QUANTITY << std::endl
+            << "[-f|-F] XY - Stop after XY iterations. Default: Don't stop." << std::endl
+            << "[-i|-I] ABC - Initialization scheme for the bodies." << std::endl
+#ifdef OPTION_WITH_RENDERING
+            << "[-b|-B] 0|1 - Enable visual mode. Default: Enabled." << std::endl;
+#else
+            << "[-b|-B] 0|1 - Enable visual mode. NOT AVAILBLE IN THE CURRENT BUILD." << std::endl;
+#endif
+    }
 };
 
 Args::Args(int argc, char **argv)
 {
-    for (int n = 1; n < argc; n+=2) {   /* Scan through args. */
+    for (int n = 1; n < argc; ++n) {   /* Scan through args. */
         if (argv[n][0] != '-' && argv[n][0] != '/') {
             std::cerr << "Options must begin with - or /" << std::endl;
             exit(1);
         }
         const char option = argv[n][1] == '\0' ? ' ' : argv[n][1];
-        if (n + 1 == argc) {
+        const char * value =
+            argc > n + 1 && argv[n+1][0] != '-' && argv[n+1][0] != '/'
+                ? argv[n+1]
+                : (const char*)nullptr;
+
+        switch (option) {
+        case 'h':
+        case 'H':
+            printHelp();
+            exit(0);
+        case 'i':
+        case 'I':
+            bodiesInitScheme = value ? value : "(unspecified)";
+            if (value) {
+                ++n;
+            }
+            continue;
+        }
+
+        if (!value) {
             std::cerr << "No value given for option " << option << std::endl;
+            printHelp();
             exit(1);
         }
-        const char * value = argv[n+1];
         switch (option) {
         case 'n':
         case 'N':
@@ -69,19 +101,12 @@ Args::Args(int argc, char **argv)
         case 'B':
             visualMode = std::atoi(value) != 0;
             break;
-        case 'i':
-        case 'I':
-            bodiesInitScheme = value;
-            break;
         default:
             std::cerr << "Invalid option: " << option << std::endl;
-            std::cerr << "Valid options are:" << std::endl
-                << "[-n|-N] XY - Create XY bodies. Default: " << BODIES_QUANTITY << std::endl
-                << "[-f|-F] XY - Stop after XY frames. Default: Don't stop." << std::endl
-                << "[-b|-B] 0|1 - Enable visual mode. Default: Enabled." << std::endl
-                << "[-i|-I] ABC - Initialization scheme for the bodies." << std::endl;
+            printHelp();
             exit(1);
         }
+        ++n;
     }
 }
 

@@ -46,7 +46,7 @@ void initBodies4Spheres(std::vector<Body> &bodies)
 
     initBodiesSphereExt(bodies, defaultInitRadius);
 
-    const Vec3d offset = 4.0 * Vec3d{ defaultInitRadius, defaultInitRadius, 0.0 };
+    const Vec3d offset = 1.2 * Vec3d{ defaultInitRadius, defaultInitRadius, 0.0 };
 
     for (size_t i = 0; i < numBodies / 4; ++i) {
         bodies[i].position += offset;
