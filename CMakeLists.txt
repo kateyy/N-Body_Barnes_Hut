@@ -30,7 +30,12 @@ option(OPTION_PROFILING
     "Setup compile flags for profiling with GPROF (gcc only)." OFF)
 
 find_package(OpenMP REQUIRED)
-find_package(glm REQUIRED)
+find_package(glm QUIET)
+if (NOT glm_FOUND)
+    message("Using legacy glm find script...")
+    set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/legacy")
+    find_package(glm REQUIRED)
+endif()
 if (OPTION_WITH_RENDERING)
     find_package(OpenGL REQUIRED)
     find_package(glfw3 REQUIRED)
