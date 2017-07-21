@@ -51,12 +51,13 @@ else()
     message(WARNING "Unknown platform: \"${CMAKE_SYSTEM_PROCESSOR}\"")
 endif()
 
-function(configure_target targetName)
-    target_compile_options(${targetName} PRIVATE ${OpenMP_CXX_FLAGS})
+function(configure_target targetName linkLng)
+    set_target_properties(${targetName} PROPERTIES LINKER_LANGUAGE ${linkLng})
+    target_compile_options(${targetName} PRIVATE ${OpenMP_${linkLng}_FLAGS})
     if (NOT MSVC)
         target_link_libraries(${targetName} PUBLIC
-            ${OpenMP_CXX_LIB_NAMES}
-            ${OpenMP_CXX_FLAGS} # older systems/CMake versions require this flag here
+            ${OpenMP_${linkLng}_LIB_NAMES}
+            ${OpenMP_${linkLng}_FLAGS} # older systems/CMake versions require this flag here
         )
     endif()
     # target_compile_definitions(${targetName} PRIVATE GLM_FORCE_INLINE)
@@ -126,7 +127,7 @@ function(configure_target targetName)
         )
         target_compile_definitions(${targetName} PRIVATE _CRT_SECURE_NO_WARNINGS)
         set_target_properties(${targetName} PROPERTIES
-            LINK_FLAGS                  "${OpenMP_CXX_LIB_NAMES}"
+            LINK_FLAGS                  "${OpenMP_${linkLng}_LIB_NAMES}"
             LINK_FLAGS_DEBUG            "/STACK:33554432"
             LINK_FLAGS_RELEASE          "/STACK:8388608 /OPT:REF /OPT:ICF /LTCG"
             LINK_FLAGS_RELWITHDEBINFO   "/STACK:8388608 /DEBUG /INCREMENTAL:NO"
@@ -164,7 +165,7 @@ if (OPTION_WITH_PNG_EXPORT)
 endif()
 
 add_executable(nbody ${sources})
-configure_target(nbody)
+configure_target(nbody CXX)
 
 target_include_directories(nbody PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(nbody SYSTEM PUBLIC ${GLM_INCLUDE_DIR})
@@ -193,4 +194,4 @@ add_executable(nbody_c
     src/c/core.c
     src/c/main.c
 )
-configure_target(nbody_c)
+configure_target(nbody_c C)

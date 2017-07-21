@@ -493,6 +493,7 @@ update(void)
             forceOverNode(roots[i], NULL, roots[i]->bodies[j], 0);
         }
     }
+#pragma omp parallel for
     for (i = 0; i < bodiesQuantity; i++) {
         bodies[i].speed.x += bodies[i].force.x / bodies[i].mass;
         bodies[i].speed.y += bodies[i].force.y / bodies[i].mass;
@@ -511,11 +512,21 @@ update(void)
 }
 
 void benchMode() {
+#if CLOCK_MONOTONIC
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+#else
     time_t start = clock();
+#endif
     while (frame != frameLimit) {
         update();
     }
+#if CLOCK_MONOTONIC
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    float seconds = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.f;
+#else
     time_t end = clock();
     float seconds = (float)(end - start) / CLOCKS_PER_SEC;
+#endif
     fprintf(stderr, "Runtime: %f\n", seconds);
 }

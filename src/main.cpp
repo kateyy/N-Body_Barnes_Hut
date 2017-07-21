@@ -71,8 +71,7 @@ Args::Args(int argc, char **argv)
             exit(1);
         }
         const char option = argv[n][1] == '\0' ? ' ' : argv[n][1];
-        const char * value =
-            argc > n + 1 && argv[n+1][0] != '-' && argv[n+1][0] != '/'
+        const char * value = argc > n + 1
                 ? argv[n+1]
                 : (const char*)nullptr;
 
