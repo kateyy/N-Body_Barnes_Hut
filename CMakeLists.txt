@@ -102,18 +102,22 @@ function(configure_target targetName linkLng)
             -Wall
             -Wextra
             -Wpedantic
+            -ffast-math
         )
         target_compile_definitions(${targetName} PUBLIC
             $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
         )
         if (NOT PGASUS_PLATFORM_PPC64LE)
             target_compile_options(${targetName} PRIVATE
-                -ffast-math -march=native -mtune=native -malign-double
+                -march=native -mtune=native -malign-double
             )
         endif()
         if (OPTION_PROFILING)
             target_compile_options(${targetName} PRIVATE -g -pg)
             target_link_libraries(${targetName} PRIVATE -pg)
+        endif()
+        if (linkLng STREQUAL "C")
+            target_link_libraries(${targetName} PRIVATE -lm)
         endif()
 
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
