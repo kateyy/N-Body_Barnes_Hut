@@ -36,6 +36,8 @@ using namespace gl33core;
 namespace
 {
 
+constexpr double colorMax = 3E4;
+
 constexpr GLuint primitiveRestartIdx = std::numeric_limits<GLuint>::max();
 
 float Color_list[56][3] = { {204, 0, 0},
@@ -414,7 +416,8 @@ bool Renderer::drawScene_mem()
         toGpuData.resize(lockedData.bodies.size());
         for (size_t i = 0; i < lockedData.bodies.size(); ++i) {
             toGpuData[i].position = lockedData.bodies[i].position * scale;
-            GiveRainbowColor(lockedData.bodies[i].acel, &toGpuData[i].color[0]);
+            const float acceleration = float(glm::length(lockedData.bodies[i].speed) / colorMax);
+            GiveRainbowColor(acceleration, &toGpuData[i].color[0]);
         }
         if (m_renderTree) {
             GLuint idx = 0;

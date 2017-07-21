@@ -17,7 +17,6 @@ struct body
     struct coord position;
     struct coord force;
     struct coord speed;
-    double acel;
     double mass;
 };
 

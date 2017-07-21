@@ -6,8 +6,6 @@
 #include "config.h"
 #include "core.h"
 
-#define colorMax 3E4
-
 extern int paused, bodiesQuantity, frameLimit;
 int frame;
 extern char * inputFileName;
@@ -498,9 +496,6 @@ update(void)
         bodies[i].speed.x += bodies[i].force.x / bodies[i].mass;
         bodies[i].speed.y += bodies[i].force.y / bodies[i].mass;
         bodies[i].speed.z += bodies[i].force.z / bodies[i].mass;
-        bodies[i].acel = sqrt(bodies[i].speed.x * bodies[i].speed.x +
-            bodies[i].speed.y * bodies[i].speed.y +
-            bodies[i].speed.z * bodies[i].speed.z) / colorMax;
         bodies[i].position.x += bodies[i].speed.x * 50E12;
         bodies[i].position.y += bodies[i].speed.y * 50E12;
         bodies[i].position.z += bodies[i].speed.z * 50E12;

@@ -16,11 +16,13 @@
 
 #include "core.h"
 
-constexpr double colorMax = 3E4;
 using namespace config;
 
 namespace
 {
+
+constexpr double colorMax = 3E4;
+
 constexpr BodyIndex_t invalidBodyIdx = std::numeric_limits<BodyIndex_t>::max();
 constexpr NodeIndex_t invalidNodeIdx = std::numeric_limits<NodeIndex_t>::max();
 
@@ -497,17 +499,28 @@ bool Model::updateUnlocked()
         return false;
     }
     m_rootIndices.clear();
+
+    /** Build the tree for the current spatial body distribution. */
     resetNodes();
     divideNode(0);
-#pragma omp parallel for
+
+    /**
+     * Update body parameters.
+     * These loops implicitly swap between old and new body parameters:
+     * The previous state is stored in the nodes' centers of mass, which are updated in the first
+     * loop. The new state is written to the m_bodies in the second loop (with its nested loops).
+     */
+
+    #pragma omp parallel for
     for (ptrdiff_t i = 0; i < static_cast<ptrdiff_t>(m_nodes.size()); ++i) {
         m_nodes[i].updateCenterOfMass(m_bodies);
     }
-  #pragma omp parallel for
+
+    #pragma omp parallel for
     for (ptrdiff_t ri = 0; ri < static_cast<ptrdiff_t>(m_rootIndices.size()); ++ri) {
         const NodeIndex_t rootIdx = m_rootIndices[ri];
         const Node& root = m_nodes[rootIdx];
-  #pragma omp parallel for
+        #pragma omp parallel for
         for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
             forceOverNode(rootIdx, invalidNodeIdx, m_bodies[root.bodies()[bodyIdx]], false);
         }
@@ -516,7 +529,6 @@ bool Model::updateUnlocked()
     for (ptrdiff_t i = 0; i < ptrdiff_t(m_bodies.size()); i++) {
         Body& body = m_bodies[i];
         body.speed += body.force / body.mass;
-        body.acel = glm::length(body.speed) / colorMax;
         body.position += body.speed * 50E12;
         body.force = { 0, 0, 0 };
     }

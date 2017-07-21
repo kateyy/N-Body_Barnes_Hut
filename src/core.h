@@ -23,7 +23,6 @@ struct Body
     Vec3d position;
     Vec3d force;
     Vec3d speed;
-    double acel;
     double mass;
 };
 
