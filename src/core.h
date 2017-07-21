@@ -18,12 +18,46 @@ using Vec3d = glm::tvec3<double>;
 using BodyIndex_t = uint32_t;
 using NodeIndex_t = size_t;
 
+/**
+ * An entity.
+ *
+ * Note: The mutex must only be used in contexts where it is guaranteed that the Body will not be
+ * copied or moved. The mutex is not copied/moved with the body!
+ */
 struct Body
 {
     Vec3d position;
     Vec3d force;
     Vec3d speed;
     double mass;
+    std::mutex mutex;
+
+    friend void swap(Body &lhs, Body &rhs) noexcept
+    {
+        using std::swap;
+        swap(lhs.position, rhs.position);
+        swap(lhs.force, rhs.force);
+        swap(lhs.speed, rhs.speed);
+        swap(lhs.mass, rhs.mass);
+    }
+
+    Body() noexcept {}
+    ~Body() noexcept {}
+    Body(const Vec3d &position, const Vec3d &force, const Vec3d &speed, double mass) noexcept
+        : position{ position }, force{ force }, speed{ speed }, mass{ mass } {}
+    Body(const Body &other) noexcept
+        : position{ other.position }, force{ other.force }, speed{ other.speed }
+        , mass{ other.mass }
+    {
+    }
+    Body(Body &&other) noexcept : Body()
+    {
+        swap(*this, other);
+    }
+    Body& operator=(Body other) noexcept {
+        swap(*this, other);
+        return *this;
+    }
 };
 
 

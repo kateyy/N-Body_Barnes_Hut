@@ -351,8 +351,10 @@ bool Node::applyForceTo(Body &body) const
         || this->bodies_quantity() == 1) {
         xyzDist = m_centerOfMass.position - body.position;
         const double DistanceSquared = glm::length2(xyzDist) + EPS2;
-        const double force = K * m_centerOfMass.mass * body.mass / DistanceSquared;
-        body.force += xyzDist / std::sqrt(DistanceSquared) * force;
+        const double f = K * m_centerOfMass.mass * body.mass / DistanceSquared;
+        const Vec3d additionalForce = xyzDist / std::sqrt(DistanceSquared) * f;
+        const std::lock_guard<std::mutex> lock{ body.mutex };
+        body.force += additionalForce;
         return true;
     }
     else {
