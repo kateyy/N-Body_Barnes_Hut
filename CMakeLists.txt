@@ -46,6 +46,8 @@ if (OPTION_WITH_PNG_EXPORT)
     find_package(PNG REQUIRED)
 endif()
 
+find_package(PGASUS REQUIRED)
+
 set(PGASUS_PLATFORM_X86_64 0)
 set(PGASUS_PLATFORM_PPC64LE 0)
 if (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
@@ -175,6 +177,7 @@ endif()
 
 add_executable(nbody ${sources})
 configure_target(nbody CXX)
+target_link_libraries(nbody PUBLIC PGASUS::hpinuma_s)
 
 target_include_directories(nbody PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(nbody SYSTEM PUBLIC ${GLM_INCLUDE_DIR})

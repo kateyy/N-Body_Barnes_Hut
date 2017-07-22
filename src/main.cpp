@@ -22,6 +22,9 @@
 #include <iostream>
 #include <string>
 
+#include <PGASUS/base/node.hpp>
+#include <PGASUS/malloc.hpp>
+
 #include "config.h"
 #include "core.h"
 
