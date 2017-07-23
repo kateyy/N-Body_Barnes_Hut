@@ -9,9 +9,11 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <thread>
 
 #include <omp.h>
 
@@ -360,7 +362,7 @@ bool Node::applyForceTo(Body &body) const
         const double DistanceSquared = glm::length2(xyzDist) + EPS2;
         const double f = K * m_centerOfMass.mass * body.mass / DistanceSquared;
         const Vec3d additionalForce = xyzDist / std::sqrt(DistanceSquared) * f;
-        const std::lock_guard<std::mutex> lock{ body.mutex };
+        // const std::lock_guard<std::mutex> lock{ body.mutex };
         body.force += additionalForce;
         return true;
     }
@@ -524,43 +526,68 @@ bool Model::updateUnlocked()
         m_nodes[i].updateCenterOfMass(m_bodies);
     }
 
-    static const size_t threadCount = [] () {
-        numa::NodeList nodes;
+    static numa::NodeList nodes = [] () {
+        numa::NodeList nodes_;
         for (const numa::Node &node : numa::NodeList::logicalNodesWithCPUs()) {
             if (node.memorySize() > 0) {
-                nodes.push_back(node);
+                nodes_.push_back(node);
             }
         }
-        const size_t threadCount = std::accumulate(nodes.begin(), nodes.end(), size_t(0),
-            [] (size_t currentNum, const numa::Node &node) {
-                return currentNum + node.threadCount();
-            });
-        return threadCount;
+        return nodes_;
     }();
 
-    auto runFunc = [this] (size_t startRootIdx, size_t endRootIdx) {
+    static const size_t threadCount = std::accumulate(nodes.begin(), nodes.end(), size_t(0),
+        [] (size_t currentNum, const numa::Node &node) { return currentNum + node.threadCount(); });
+
+    std::vector<std::vector<Body>> threadLocalBodies{ threadCount };
+
+    auto runFunc = [this, &threadLocalBodies] (size_t startRootIdx, size_t endRootIdx,
+        size_t threadIdx, const numa::Node &node) {
+        const numa::PlaceGuard placeGuard{ node };
+        auto bodies = std::vector<Body>(m_bodies);    // work on local copy
         for (size_t ri = startRootIdx; ri < endRootIdx; ++ri) {
             const NodeIndex_t rootIdx = m_rootIndices[ri];
             const Node& root = m_nodes[rootIdx];
             for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
-                forceOverNode(rootIdx, invalidNodeIdx, m_bodies[root.bodies()[bodyIdx]], false);
+                forceOverNode(rootIdx, invalidNodeIdx, bodies[root.bodies()[bodyIdx]], false);
             }
         }
+        threadLocalBodies[threadIdx] = std::move(bodies);
     };
     const size_t numJobs = m_rootIndices.size();
     const size_t step = size_t(std::ceil(float(numJobs) / threadCount));
-    static std::vector<std::future<void>> futures{ threadCount };
+    std::vector<std::thread> threads;
     size_t first = 0;
-    for (size_t threadIdx = 0; threadIdx < threadCount; ++threadIdx) {
-        const size_t last = std::min(first + step, numJobs);
-        futures[threadIdx] = std::async(std::launch::async, runFunc, first, last);
-        first = last;
+    size_t threadIdx = 0;
+    for (const numa::Node &node : nodes) {
+        for (size_t localThreadIdx = 0; localThreadIdx < node.threadCount(); ++localThreadIdx) {
+            const size_t last = std::min(first + step, numJobs);
+            threads.emplace_back(runFunc, first, last, threadIdx, std::ref(node));
+            first = last;
+            ++threadIdx;
+            if (first == numJobs) {
+                break;
+            }
+        }
         if (first == numJobs) {
             break;
         }
     }
-    for (auto & future : futures) {
-        future.wait();
+    if (threadIdx != threadCount) {
+        std::cerr << "dynamic topology??" << std::endl;
+        exit(42);
+    }
+    for (auto & thread : threads) {
+        thread.join();
+    }
+    // accumulate thread local results
+    for (auto &body : m_bodies) {
+        body.force = {0, 0, 0};
+    }
+    for (auto &threadLocal : threadLocalBodies) {
+        for (size_t i = 0; i < m_bodies.size(); ++i) {
+            m_bodies[i].force += threadLocal[i].force;
+        }
     }
 
     #pragma omp parallel for

@@ -30,7 +30,7 @@ struct Body
     Vec3d force;
     Vec3d speed;
     double mass;
-    std::mutex mutex;
+    // std::mutex mutex;
 
     friend void swap(Body &lhs, Body &rhs) noexcept
     {
