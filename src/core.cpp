@@ -4,12 +4,16 @@
 #include <cstdio>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <sstream>
 #include <string>
+
+#include <omp.h>
 
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/norm.hpp>
@@ -390,13 +394,6 @@ void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, 
 
 bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 {
-    numa::MemSource currMemSource = numa::malloc::curr_msource();
-    if (!currMemSource.valid() || !currMemSource.getLogicalNode().valid()) {
-        std::cerr << "No valid NUMA MemSource!" << std::endl;
-        return false;
-    }
-    std::cout << "Initializing on physical NUMA node " << currMemSource.getLogicalNode().physicalId() << std::endl;
-
     m_frameCount = 0;
     if (!outputFileName.empty()) {
         m_outputPositions_f = std::fopen(outputFileName.c_str(), "wb");
@@ -506,8 +503,7 @@ bool Model::updateUnlocked()
 
     if (m_frameLimit > 0 && m_frameCount == m_frameLimit) {
         m_endTime = std::chrono::high_resolution_clock::now();
-        printf("Simulation time Elapsed = %f\n",
-            timeDiffNanonSecs(m_startTime, m_endTime) / 1e9);
+        printf("%f\n", timeDiffNanonSecs(m_startTime, m_endTime) / 1e9);
         return false;
     }
     m_rootIndices.clear();
@@ -528,15 +524,45 @@ bool Model::updateUnlocked()
         m_nodes[i].updateCenterOfMass(m_bodies);
     }
 
-    #pragma omp parallel for
-    for (ptrdiff_t ri = 0; ri < static_cast<ptrdiff_t>(m_rootIndices.size()); ++ri) {
-        const NodeIndex_t rootIdx = m_rootIndices[ri];
-        const Node& root = m_nodes[rootIdx];
-        #pragma omp parallel for
-        for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
-            forceOverNode(rootIdx, invalidNodeIdx, m_bodies[root.bodies()[bodyIdx]], false);
+    static const size_t threadCount = [] () {
+        numa::NodeList nodes;
+        for (const numa::Node &node : numa::NodeList::logicalNodesWithCPUs()) {
+            if (node.memorySize() > 0) {
+                nodes.push_back(node);
+            }
+        }
+        const size_t threadCount = std::accumulate(nodes.begin(), nodes.end(), size_t(0),
+            [] (size_t currentNum, const numa::Node &node) {
+                return currentNum + node.threadCount();
+            });
+        return threadCount;
+    }();
+
+    auto runFunc = [this] (size_t startRootIdx, size_t endRootIdx) {
+        for (size_t ri = startRootIdx; ri < endRootIdx; ++ri) {
+            const NodeIndex_t rootIdx = m_rootIndices[ri];
+            const Node& root = m_nodes[rootIdx];
+            for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
+                forceOverNode(rootIdx, invalidNodeIdx, m_bodies[root.bodies()[bodyIdx]], false);
+            }
+        }
+    };
+    const size_t numJobs = m_rootIndices.size();
+    const size_t step = size_t(std::ceil(float(numJobs) / threadCount));
+    static std::vector<std::future<void>> futures{ threadCount };
+    size_t first = 0;
+    for (size_t threadIdx = 0; threadIdx < threadCount; ++threadIdx) {
+        const size_t last = std::min(first + step, numJobs);
+        futures[threadIdx] = std::async(std::launch::async, runFunc, first, last);
+        first = last;
+        if (first == numJobs) {
+            break;
         }
     }
+    for (auto & future : futures) {
+        future.wait();
+    }
+
     #pragma omp parallel for
     for (ptrdiff_t i = 0; i < ptrdiff_t(m_bodies.size()); i++) {
         Body& body = m_bodies[i];
