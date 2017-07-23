@@ -69,6 +69,11 @@ function(configure_target targetName linkLng)
     endif()
     # target_compile_definitions(${targetName} PRIVATE GLM_FORCE_INLINE)
 
+    if (NOT MSVC)
+        target_compile_options(${targetName} PRIVATE -pthread)
+        target_link_libraries(${targetName} PRIVATE -pthread)
+    endif()
+
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         target_compile_options(${targetName} PRIVATE
             -Wall

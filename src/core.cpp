@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -16,6 +20,8 @@
 #include <thread>
 
 #include <omp.h>
+
+#include <pthread.h>
 
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/norm.hpp>
@@ -362,7 +368,7 @@ bool Node::applyForceTo(Body &body) const
         const double DistanceSquared = glm::length2(xyzDist) + EPS2;
         const double f = K * m_centerOfMass.mass * body.mass / DistanceSquared;
         const Vec3d additionalForce = xyzDist / std::sqrt(DistanceSquared) * f;
-        // const std::lock_guard<std::mutex> lock{ body.mutex };
+        const std::lock_guard<std::mutex> lock{ body.mutex };
         body.force += additionalForce;
         return true;
     }
@@ -539,12 +545,25 @@ bool Model::updateUnlocked()
     static const size_t threadCount = std::accumulate(nodes.begin(), nodes.end(), size_t(0),
         [] (size_t currentNum, const numa::Node &node) { return currentNum + node.threadCount(); });
 
-    std::vector<std::vector<Body>> threadLocalBodies{ threadCount };
+    // Create per-node local copies of the bodies.
+    std::vector<std::vector<Body>> nodeLocalBodies{ nodes.size() };
+    for (size_t nodeId = 0; nodeId < nodes.size(); ++nodeId) {
+        const numa::PlaceGuard placeGuard{ nodes[nodeId] };
+        nodeLocalBodies[nodeId] = m_bodies;
+    }
 
-    auto runFunc = [this, &threadLocalBodies] (size_t startRootIdx, size_t endRootIdx,
-        size_t threadIdx, const numa::Node &node) {
-        const numa::PlaceGuard placeGuard{ node };
-        auto bodies = std::vector<Body>(m_bodies);    // work on local copy
+    auto runFunc = [this] (size_t startRootIdx, size_t endRootIdx, const numa::Node &node, std::vector<Body> & bodies) {
+        // Bind to CPUs of the requested NUMA node
+        cpu_set_t cpuSet;
+        pthread_t thread = pthread_self();
+        CPU_ZERO(&cpuSet);
+        for (const int i : node.cpuids()) {
+            CPU_SET(i, &cpuSet);
+        }
+        if (0 != pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuSet)) {
+            std::cerr << "pthread affinity failed" << std::endl;
+            exit(21);
+        }
         for (size_t ri = startRootIdx; ri < endRootIdx; ++ri) {
             const NodeIndex_t rootIdx = m_rootIndices[ri];
             const Node& root = m_nodes[rootIdx];
@@ -552,17 +571,17 @@ bool Model::updateUnlocked()
                 forceOverNode(rootIdx, invalidNodeIdx, bodies[root.bodies()[bodyIdx]], false);
             }
         }
-        threadLocalBodies[threadIdx] = std::move(bodies);
     };
     const size_t numJobs = m_rootIndices.size();
     const size_t step = size_t(std::ceil(float(numJobs) / threadCount));
     std::vector<std::thread> threads;
     size_t first = 0;
     size_t threadIdx = 0;
-    for (const numa::Node &node : nodes) {
+    for (size_t nodeId = 0; nodeId < nodes.size(); ++nodeId) {
+        const numa::Node &node = nodes[nodeId];
         for (size_t localThreadIdx = 0; localThreadIdx < node.threadCount(); ++localThreadIdx) {
             const size_t last = std::min(first + step, numJobs);
-            threads.emplace_back(runFunc, first, last, threadIdx, std::ref(node));
+            threads.emplace_back(runFunc, first, last, std::ref(node), std::ref(nodeLocalBodies[nodeId]));
             first = last;
             ++threadIdx;
             if (first == numJobs) {
@@ -580,13 +599,13 @@ bool Model::updateUnlocked()
     for (auto & thread : threads) {
         thread.join();
     }
-    // accumulate thread local results
+    // accumulate node local results
     for (auto &body : m_bodies) {
         body.force = {0, 0, 0};
     }
-    for (auto &threadLocal : threadLocalBodies) {
+    for (auto &nodeLocal : nodeLocalBodies) {
         for (size_t i = 0; i < m_bodies.size(); ++i) {
-            m_bodies[i].force += threadLocal[i].force;
+            m_bodies[i].force += nodeLocal[i].force;
         }
     }
 
