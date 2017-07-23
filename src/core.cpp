@@ -14,6 +14,9 @@
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/norm.hpp>
 
+#include <PGASUS/malloc.hpp>
+#include <PGASUS/base/node.hpp>
+
 #include "core.h"
 
 using namespace config;
@@ -387,6 +390,13 @@ void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, 
 
 bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 {
+    numa::MemSource currMemSource = numa::malloc::curr_msource();
+    if (!currMemSource.valid() || !currMemSource.getLogicalNode().valid()) {
+        std::cerr << "No valid NUMA MemSource!" << std::endl;
+        return false;
+    }
+    std::cout << "Initializing on physical NUMA node " << currMemSource.getLogicalNode().physicalId() << std::endl;
+
     m_frameCount = 0;
     if (!outputFileName.empty()) {
         m_outputPositions_f = std::fopen(outputFileName.c_str(), "wb");

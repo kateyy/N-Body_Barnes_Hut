@@ -17,13 +17,14 @@
 //Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 //MA 02110-1301, USA.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <string>
 
-#include <PGASUS/base/node.hpp>
 #include <PGASUS/malloc.hpp>
+#include <PGASUS/base/node.hpp>
 
 #include "config.h"
 #include "core.h"
@@ -133,6 +134,18 @@ Args::Args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
+    const auto & numaNodes = numa::NodeList::logicalNodes();
+    // TODO use the largest/fasted node instead?
+    auto homeNodeIt = std::find_if(numaNodes.begin(), numaNodes.end(), [] (const numa::Node & node) {
+        return node.memorySize() > 0; });
+    if (homeNodeIt == numaNodes.end()) {
+        std::cerr << "No valid NUMA node found." << std::endl;
+        return 1;
+    }
+    const numa::Node homeNode = *homeNodeIt;
+    // By default all memory is allocated on a "home" node.
+    const numa::PlaceGuard numaGuard{ homeNode };
+
     const Args args(argc, argv);
 
     Model model;
