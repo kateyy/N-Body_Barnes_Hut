@@ -545,11 +545,18 @@ bool Model::updateUnlocked()
     static const size_t threadCount = std::accumulate(nodes.begin(), nodes.end(), size_t(0),
         [] (size_t currentNum, const numa::Node &node) { return currentNum + node.threadCount(); });
 
-    // Create per-node local copies of the bodies.
-    std::vector<std::vector<Body>> nodeLocalBodies{ nodes.size() };
-    for (size_t nodeId = 0; nodeId < nodes.size(); ++nodeId) {
-        const numa::PlaceGuard placeGuard{ nodes[nodeId] };
-        nodeLocalBodies[nodeId] = m_bodies;
+    // Create per-node local storage for the bodies.
+    static std::vector<std::vector<Body>> nodeLocalBodies = [this] () {
+        std::vector<std::vector<Body>> nlb{ nodes.size() };
+        for (size_t nodeId = 0; nodeId < nodes.size(); ++nodeId) {
+            const numa::PlaceGuard placeGuard{ nodes[nodeId] };
+            nodeLocalBodies[nodeId].resize(m_bodies.size());
+        }
+        return nlb;
+    }();
+    // Copy current bodies to node storage.
+    for (auto &nodeLocal : nodeLocalBodies) {
+        std::copy_n(m_bodies.begin(), m_bodies.size(), nodeLocal.begin());
     }
 
     auto runFunc = [this] (size_t startRootIdx, size_t endRootIdx, const numa::Node &node, std::vector<Body> & bodies) {
