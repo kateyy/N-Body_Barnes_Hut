@@ -28,7 +28,6 @@
 #include <glm/gtx/norm.hpp>
 
 #include <PGASUS/malloc.hpp>
-#include <PGASUS/base/node.hpp>
 
 #include "core.h"
 
@@ -36,8 +35,6 @@ using namespace config;
 
 namespace
 {
-
-constexpr double colorMax = 3E4;
 
 constexpr BodyIndex_t invalidBodyIdx = std::numeric_limits<BodyIndex_t>::max();
 constexpr NodeIndex_t invalidNodeIdx = std::numeric_limits<NodeIndex_t>::max();
@@ -401,6 +398,112 @@ void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, 
     return;
 }
 
+
+
+class WorkerThread
+{
+public:
+    WorkerThread(const std::vector<int> &cpuIds)
+        : m_cpuIds{ cpuIds }
+        , m_impl{ std::make_unique<Impl>() }
+        , m_keepRunning{ true }
+    {
+        // Synchronize thread initialization
+        std::unique_lock<std::mutex> lock{ m_impl->m_mutex };
+        m_impl->m_thread = std::thread(&threadRun, std::ref(*this));
+        m_impl->m_threadSync.wait(lock);
+    }
+    ~WorkerThread() {
+        m_keepRunning = false;
+        if (!m_impl) {
+            return;
+        }
+        m_impl->m_function = {};
+        m_impl->m_threadSync.notify_one();
+        wait();
+        m_impl->m_thread.join();
+    }
+    WorkerThread() : m_keepRunning{ false } {}
+    WorkerThread(WorkerThread && other) : WorkerThread()
+    {
+        swap(*this, other);
+    }
+    WorkerThread& operator=(WorkerThread && other) {
+        swap(*this, other);
+        return *this;
+    }
+    friend void swap(WorkerThread &lhs, WorkerThread &rhs) {
+        using std::swap;
+        swap(lhs.m_cpuIds, rhs.m_cpuIds);
+        swap(lhs.m_impl, rhs.m_impl);
+        swap(lhs.m_keepRunning, rhs.m_keepRunning);
+    }
+    WorkerThread(const WorkerThread &other) = delete;
+    void operator=(const WorkerThread &other) = delete;
+
+    void run(const std::function<void()> &func)
+    {
+        if (!m_impl) {
+            return;
+        }
+        wait();
+        m_impl->m_function = func;
+        m_impl->m_threadSync.notify_one();
+    }
+
+    void wait()
+    {
+        if (!m_impl || !m_impl->m_function) {
+            return;
+        }
+        // This mutex is only unlocked if the thread is waiting.
+        const std::unique_lock<std::mutex> lock{ m_impl->m_mutex };
+    }
+
+private:
+    static void threadRun(WorkerThread & self)
+    {
+        {
+            cpu_set_t cpuSet;
+            pthread_t pthread = pthread_self();
+            CPU_ZERO(&cpuSet);
+            for (const int i : self.m_cpuIds) {
+                CPU_SET(i, &cpuSet);
+            }
+            if (0 != pthread_setaffinity_np(pthread, sizeof(cpu_set_t), &cpuSet)) {
+                std::cerr << "pthread affinity failed" << std::endl;
+                exit(21);
+            }
+        }
+
+        self.m_impl->m_threadSync.notify_one();
+        std::unique_lock<std::mutex> lock{ self.m_impl->m_mutex };
+        while (true) {
+            self.m_impl->m_threadSync.wait(lock);
+            if (!self.m_keepRunning) {
+                break;
+            }
+            if (self.m_impl->m_function) {
+                self.m_impl->m_function();
+                self.m_impl->m_function = {};
+            }
+        }
+    }
+
+private:
+    std::vector<int> m_cpuIds;
+    struct Impl {
+        std::thread m_thread;
+        std::mutex m_mutex;
+        std::condition_variable m_threadSync;
+        std::function<void()> m_function;
+    };
+    std::unique_ptr<Impl> m_impl;
+    bool m_keepRunning;
+};
+
+
+
 bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 {
     m_frameCount = 0;
@@ -452,6 +555,38 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 
     for (BodyIndex_t i = 0; i < m_bodies.size(); ++i) {
         m_nodes[0].addBody(i);
+    }
+
+
+    // Initialize parallel/NUMA worker environment
+    for (const numa::Node &node : numa::NodeList::logicalNodesWithCPUs()) {
+        if (node.memorySize() > 0) {
+            m_numaNodes.push_back(node);
+        }
+    }
+    m_threadCount = std::accumulate(m_numaNodes.begin(), m_numaNodes.end(), size_t(0),
+        [] (size_t currentNum, const numa::Node &node)
+        { return currentNum + node.threadCount(); });
+
+    m_workerThreads.resize(m_threadCount);
+    {
+        size_t threadIdx = 0;
+        for (numa::Node &node : m_numaNodes) {
+            for (size_t i = 0; i < node.threadCount(); ++i) {
+                m_workerThreads[threadIdx++] = WorkerThread(node.cpuids());
+            }
+        }
+        if (threadIdx != m_threadCount) {
+            std::cerr << "Dynamic topology???" << std::endl;
+            exit(43);
+        }
+    }
+
+    // Create per-node local storage for the bodies.
+    m_nodeLocalBodies.resize(m_numaNodes.size());
+    for (size_t nodeId = 0; nodeId < m_numaNodes.size(); ++nodeId) {
+        const numa::PlaceGuard placeGuard{ m_numaNodes[nodeId] };
+        m_nodeLocalBodies[nodeId].resize(m_bodies.size());
     }
 
     m_startTime = std::chrono::high_resolution_clock::now();
@@ -506,107 +641,6 @@ bool Model::update()
     return updateUnlocked();
 }
 
-
-class WorkerThread
-{
-public:
-    WorkerThread(const std::vector<int> &cpuIds)
-        : m_cpuIds{ cpuIds }
-        , m_impl{ std::make_unique<Impl>() }
-        , m_keepRunning{ true }
-    {
-        // Synchronize thread initialization
-        std::unique_lock<std::mutex> lock{ m_impl->m_mutex };
-        m_impl->m_thread = std::thread(&threadRun, std::ref(*this));
-        m_impl->m_threadSync.wait(lock);
-    }
-    ~WorkerThread() {
-        m_keepRunning = false;
-        if (!m_impl) {
-            return;
-        }
-        m_impl->m_function = {};
-        wait();
-    }
-    WorkerThread() : m_keepRunning{ false } {}
-    WorkerThread(WorkerThread && other) : WorkerThread()
-    {
-        swap(*this, other);
-    }
-    WorkerThread& operator=(WorkerThread && other) {
-        swap(*this, other);
-        return *this;
-    }
-    friend void swap(WorkerThread &lhs, WorkerThread &rhs) {
-        using std::swap;
-        swap(lhs.m_cpuIds, rhs.m_cpuIds);
-        swap(lhs.m_impl, rhs.m_impl);
-        swap(lhs.m_keepRunning, rhs.m_keepRunning);
-    }
-    WorkerThread(const WorkerThread &other) = delete;
-    void operator=(const WorkerThread &other) = delete;
-
-    void run(const std::function<void()> &func)
-    {
-        if (!m_impl) {
-            return;
-        }
-        wait();
-        m_impl->m_function = func;
-        m_impl->m_threadSync.notify_one();
-    }
-
-    void wait()
-    {
-        if (!m_impl) {
-            return;
-        }
-        // This mutex is only unlocked if the thread is waiting.
-        const std::unique_lock<std::mutex> lock{ m_impl->m_mutex };
-    }
-
-private:
-    static void threadRun(WorkerThread & self)
-    {
-        {
-            cpu_set_t cpuSet;
-            pthread_t pthread = pthread_self();
-            CPU_ZERO(&cpuSet);
-            for (const int i : self.m_cpuIds) {
-                CPU_SET(i, &cpuSet);
-            }
-            if (0 != pthread_setaffinity_np(pthread, sizeof(cpu_set_t), &cpuSet)) {
-                std::cerr << "pthread affinity failed" << std::endl;
-                exit(21);
-            }
-        }
-
-        self.m_impl->m_threadSync.notify_one();
-        std::unique_lock<std::mutex> lock{ self.m_impl->m_mutex };
-        while (true) {
-            self.m_impl->m_threadSync.wait(lock);
-            if (!self.m_keepRunning) {
-                break;
-            }
-            if (self.m_impl->m_function) {
-                self.m_impl->m_function();
-            }
-        }
-    }
-
-private:
-    std::vector<int> m_cpuIds;
-    struct Impl {
-        std::thread m_thread;
-        std::mutex m_mutex;
-        std::condition_variable m_threadSync;
-        std::function<void()> m_function;
-    };
-    std::unique_ptr<Impl> m_impl;
-    bool m_keepRunning;
-};
-
-
 bool Model::updateUnlocked()
 {
     const auto startTime = std::chrono::high_resolution_clock::now();
@@ -634,45 +668,8 @@ bool Model::updateUnlocked()
         m_nodes[i].updateCenterOfMass(m_bodies);
     }
 
-    static numa::NodeList nodes = [] () {
-        numa::NodeList nodes_;
-        for (const numa::Node &node : numa::NodeList::logicalNodesWithCPUs()) {
-            if (node.memorySize() > 0) {
-                nodes_.push_back(node);
-            }
-        }
-        return nodes_;
-    }();
-
-    static const size_t threadCount = std::accumulate(nodes.begin(), nodes.end(), size_t(0),
-        [] (size_t currentNum, const numa::Node &node) { return currentNum + node.threadCount(); });
-
-    static std::vector<WorkerThread> threads = [] () {
-        std::vector<WorkerThread> ts{ threadCount };
-        size_t threadIdx = 0;
-        for (numa::Node &node : nodes) {
-            for (size_t i = 0; i < node.threadCount(); ++i) {
-                ts[threadIdx++] = WorkerThread(node.cpuids());
-            }
-        }
-        if (threadIdx != threadCount) {
-            std::cerr << "Dynamic topology???" << std::endl;
-            exit(43);
-        }
-        return ts;
-    }();
-
-    // Create per-node local storage for the bodies.
-    static std::vector<std::vector<Body>> nodeLocalBodies = [this] () {
-        std::vector<std::vector<Body>> nlb{ nodes.size() };
-        for (size_t nodeId = 0; nodeId < nodes.size(); ++nodeId) {
-            const numa::PlaceGuard placeGuard{ nodes[nodeId] };
-            nodeLocalBodies[nodeId].resize(m_bodies.size());
-        }
-        return nlb;
-    }();
     // Copy current bodies to node storage.
-    for (auto &nodeLocal : nodeLocalBodies) {
+    for (auto &nodeLocal : m_nodeLocalBodies) {
         std::copy_n(m_bodies.begin(), m_bodies.size(), nodeLocal.begin());
     }
 
@@ -686,16 +683,16 @@ bool Model::updateUnlocked()
         }
     };
     const size_t numJobs = m_rootIndices.size();
-    const size_t step = size_t(std::ceil(float(numJobs) / threadCount));
+    const size_t step = size_t(std::ceil(float(numJobs) / m_threadCount));
     size_t first = 0;
     size_t threadIdx = 0;
-    for (size_t nodeId = 0; nodeId < nodes.size(); ++nodeId) {
-        const numa::Node &node = nodes[nodeId];
+    for (size_t nodeId = 0; nodeId < m_numaNodes.size(); ++nodeId) {
+        const numa::Node &node = m_numaNodes[nodeId];
         for (size_t localThreadIdx = 0; localThreadIdx < node.threadCount(); ++localThreadIdx) {
             const size_t last = std::min(first + step, numJobs);
-            threads[threadIdx].run(std::bind(
+            m_workerThreads[threadIdx].run(std::bind(
                 runFunc,
-                first, last, std::ref(nodeLocalBodies[nodeId])));
+                first, last, std::ref(m_nodeLocalBodies[nodeId])));
             first = last;
             ++threadIdx;
             if (first == numJobs) {
@@ -706,18 +703,18 @@ bool Model::updateUnlocked()
             break;
         }
     }
-    if (threadIdx != threadCount) {
-        std::cerr << "dynamic topology??" << std::endl;
+    if (threadIdx != m_threadCount && threadIdx != numJobs) {
+        std::cerr << "dynamic topology?? (update) " << std::endl;
         exit(42);
     }
-    for (auto & thread : threads) {
+    for (auto & thread : m_workerThreads) {
         thread.wait();
     }
     // accumulate node local results
     for (auto &body : m_bodies) {
         body.force = {0, 0, 0};
     }
-    for (auto &nodeLocal : nodeLocalBodies) {
+    for (auto &nodeLocal : m_nodeLocalBodies) {
         for (size_t i = 0; i < m_bodies.size(); ++i) {
             m_bodies[i].force += nodeLocal[i].force;
         }

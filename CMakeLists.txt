@@ -112,6 +112,7 @@ function(configure_target targetName linkLng)
             -ffast-math
         )
         target_compile_definitions(${targetName} PUBLIC
+            _GLIBCXX_USE_CXX11_ABI
             $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
         )
         if (NOT PGASUS_PLATFORM_PPC64LE)
@@ -182,7 +183,7 @@ endif()
 
 add_executable(nbody ${sources})
 configure_target(nbody CXX)
-target_link_libraries(nbody PUBLIC PGASUS::hpinuma_s)
+target_link_libraries(nbody PUBLIC PGASUS::hpinuma_msource)
 
 target_include_directories(nbody PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(nbody SYSTEM PUBLIC ${GLM_INCLUDE_DIR})

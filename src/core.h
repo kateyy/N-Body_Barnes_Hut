@@ -10,6 +10,8 @@
 
 #include <glm/vec3.hpp>
 
+#include <PGASUS/base/node.hpp>
+
 #include "config.h"
 
 using Vec3d = glm::tvec3<double>;
@@ -109,6 +111,8 @@ private:
 };
 
 
+class WorkerThread;
+
 class Model
 {
 public:
@@ -202,4 +206,9 @@ private:
     size_t m_frameCount;
     timepoint_t m_startTime;
     timepoint_t m_endTime;
+
+    numa::NodeList m_numaNodes;
+    std::vector<WorkerThread> m_workerThreads;
+    size_t m_threadCount;
+    std::vector<std::vector<Body>> m_nodeLocalBodies;
 };
