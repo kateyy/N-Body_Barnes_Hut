@@ -36,7 +36,7 @@ using namespace config;
 namespace
 {
 
-constexpr BodyIndex_t invalidBodyIdx = std::numeric_limits<BodyIndex_t>::max();
+// constexpr BodyIndex_t invalidBodyIdx = std::numeric_limits<BodyIndex_t>::max();
 constexpr NodeIndex_t invalidNodeIdx = std::numeric_limits<NodeIndex_t>::max();
 
 constexpr double defaultInitRadius = 60E3 * LY;
@@ -403,27 +403,41 @@ void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, 
 class WorkerThread
 {
 public:
-    WorkerThread(const std::vector<int> &cpuIds)
-        : m_cpuIds{ cpuIds }
-        , m_impl{ std::make_unique<Impl>() }
-        , m_keepRunning{ true }
+    WorkerThread(size_t threadId, const std::vector<int> &cpuIds)
+        : m_impl{ std::make_unique<Impl>() }
     {
-        // Synchronize thread initialization
-        std::unique_lock<std::mutex> lock{ m_impl->m_mutex };
-        m_impl->m_thread = std::thread(&threadRun, std::ref(*this));
-        m_impl->m_threadSync.wait(lock);
+        if (cpuIds.empty()) {
+            std::cerr << "No CPUs assigned to WorkerThread: " << threadId << std::endl;
+            exit(1);
+        }
+        m_impl->threadId = threadId;
+        m_impl->cpuIds = cpuIds;
+        m_impl->keepRunning = true;
+        // Synchronize thread initialization:
+        // Lock the mutex and start the thread. The thread now tries to acquire
+        // the mutex lock. Wait for the condition variable, which unlocks the
+        // mutex. Now the thread acquires the mutex lock and notifies the
+        // condition variable. wait() here can only return once the thread
+        // releases the mutex lock. This happens when it waits for the condition
+        // variable. In this state, it is ready to wait for a job to execute.
+        std::unique_lock<std::mutex> lock{ m_impl->mutex };
+        m_impl->thread = std::thread(&threadRun, std::ref(*m_impl));
+        m_impl->hasJobToAcknowledge = true;
+        while (m_impl->hasJobToAcknowledge) {
+            m_impl->threadSync.wait(lock);
+        }
     }
     ~WorkerThread() {
-        m_keepRunning = false;
         if (!m_impl) {
             return;
         }
-        m_impl->m_function = {};
-        m_impl->m_threadSync.notify_one();
+        m_impl->keepRunning = false;
+        m_impl->function = {};
+        m_impl->threadSync.notify_one();
         wait();
-        m_impl->m_thread.join();
+        m_impl->thread.join();
     }
-    WorkerThread() : m_keepRunning{ false } {}
+    WorkerThread() {}
     WorkerThread(WorkerThread && other) : WorkerThread()
     {
         swap(*this, other);
@@ -434,9 +448,7 @@ public:
     }
     friend void swap(WorkerThread &lhs, WorkerThread &rhs) {
         using std::swap;
-        swap(lhs.m_cpuIds, rhs.m_cpuIds);
         swap(lhs.m_impl, rhs.m_impl);
-        swap(lhs.m_keepRunning, rhs.m_keepRunning);
     }
     WorkerThread(const WorkerThread &other) = delete;
     void operator=(const WorkerThread &other) = delete;
@@ -447,27 +459,48 @@ public:
             return;
         }
         wait();
-        m_impl->m_function = func;
-        m_impl->m_threadSync.notify_one();
+        m_impl->function = func;
+        m_impl->hasJobToAcknowledge = true;
+        // Ensure that the next wait() can only return once threadRun() actually
+        // started and finished the new job.
+        std::unique_lock<std::mutex> lock{ m_impl->jobAcknowledgeMutex };
+        m_impl->threadSync.notify_one();
+        while (m_impl->hasJobToAcknowledge) {
+            m_impl->jobAcknowledge.wait(lock);
+        }
     }
 
     void wait()
     {
-        if (!m_impl || !m_impl->m_function) {
+        if (!m_impl || !m_impl->function) {
             return;
         }
         // This mutex is only unlocked if the thread is waiting.
-        const std::unique_lock<std::mutex> lock{ m_impl->m_mutex };
+        const std::unique_lock<std::mutex> lock{ m_impl->mutex };
     }
 
 private:
-    static void threadRun(WorkerThread & self)
+    struct Impl {
+        size_t threadId;
+        std::vector<int> cpuIds;
+        bool keepRunning;
+        bool hasJobToAcknowledge;
+
+        std::thread thread;
+        std::mutex mutex;
+        std::condition_variable threadSync;
+        std::function<void()> function;
+        std::mutex jobAcknowledgeMutex;
+        std::condition_variable jobAcknowledge;
+    };
+
+    static void threadRun(WorkerThread::Impl & impl)
     {
         {
             cpu_set_t cpuSet;
             pthread_t pthread = pthread_self();
             CPU_ZERO(&cpuSet);
-            for (const int i : self.m_cpuIds) {
+            for (const int i : impl.cpuIds) {
                 CPU_SET(i, &cpuSet);
             }
             if (0 != pthread_setaffinity_np(pthread, sizeof(cpu_set_t), &cpuSet)) {
@@ -476,30 +509,33 @@ private:
             }
         }
 
-        self.m_impl->m_threadSync.notify_one();
-        std::unique_lock<std::mutex> lock{ self.m_impl->m_mutex };
+        std::unique_lock<std::mutex> lock{ impl.mutex };
+        // Let the initialization know that this thread is ready now:
+        impl.hasJobToAcknowledge = false;
+        impl.threadSync.notify_one();
         while (true) {
-            self.m_impl->m_threadSync.wait(lock);
-            if (!self.m_keepRunning) {
+            // Wait until run() notifies for a now job or a spurious wakeup
+            // occurs.
+            while (impl.keepRunning && !impl.hasJobToAcknowledge) {
+                impl.threadSync.wait(lock);
+            }
+            if (!impl.keepRunning) {
                 break;
             }
-            if (self.m_impl->m_function) {
-                self.m_impl->m_function();
-                self.m_impl->m_function = {};
+            {
+                std::unique_lock<std::mutex> jobLock{ impl.jobAcknowledgeMutex };
+                impl.jobAcknowledge.notify_one();
+                impl.hasJobToAcknowledge = false;
+            }
+            if (impl.function) {
+                impl.function();
+                impl.function = {};
             }
         }
     }
 
 private:
-    std::vector<int> m_cpuIds;
-    struct Impl {
-        std::thread m_thread;
-        std::mutex m_mutex;
-        std::condition_variable m_threadSync;
-        std::function<void()> m_function;
-    };
     std::unique_ptr<Impl> m_impl;
-    bool m_keepRunning;
 };
 
 
@@ -573,7 +609,7 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
         size_t threadIdx = 0;
         for (numa::Node &node : m_numaNodes) {
             for (size_t i = 0; i < node.threadCount(); ++i) {
-                m_workerThreads[threadIdx++] = WorkerThread(node.cpuids());
+                m_workerThreads[threadIdx++] = WorkerThread(i, node.cpuids());
             }
         }
         if (threadIdx != m_threadCount) {
@@ -586,7 +622,8 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
     m_nodeLocalBodies.resize(m_numaNodes.size());
     for (size_t nodeId = 0; nodeId < m_numaNodes.size(); ++nodeId) {
         const numa::PlaceGuard placeGuard{ m_numaNodes[nodeId] };
-        m_nodeLocalBodies[nodeId].resize(m_bodies.size());
+        m_nodeLocalBodies[nodeId]
+            = std::make_unique<std::vector<Body>>(m_bodies.size());
     }
 
     m_startTime = std::chrono::high_resolution_clock::now();
@@ -670,7 +707,7 @@ bool Model::updateUnlocked()
 
     // Copy current bodies to node storage.
     for (auto &nodeLocal : m_nodeLocalBodies) {
-        std::copy_n(m_bodies.begin(), m_bodies.size(), nodeLocal.begin());
+        std::copy_n(m_bodies.begin(), m_bodies.size(), nodeLocal->begin());
     }
 
     auto runFunc = [this] (size_t startRootIdx, size_t endRootIdx, std::vector<Body> & bodies) {
@@ -692,7 +729,7 @@ bool Model::updateUnlocked()
             const size_t last = std::min(first + step, numJobs);
             m_workerThreads[threadIdx].run(std::bind(
                 runFunc,
-                first, last, std::ref(m_nodeLocalBodies[nodeId])));
+                first, last, std::ref(*m_nodeLocalBodies[nodeId])));
             first = last;
             ++threadIdx;
             if (first == numJobs) {
@@ -703,10 +740,6 @@ bool Model::updateUnlocked()
             break;
         }
     }
-    if (threadIdx != m_threadCount && threadIdx != numJobs) {
-        std::cerr << "dynamic topology?? (update) " << std::endl;
-        exit(42);
-    }
     for (auto & thread : m_workerThreads) {
         thread.wait();
     }
@@ -714,9 +747,9 @@ bool Model::updateUnlocked()
     for (auto &body : m_bodies) {
         body.force = {0, 0, 0};
     }
-    for (auto &nodeLocal : m_nodeLocalBodies) {
+    for (const auto &nodeLocal : m_nodeLocalBodies) {
         for (size_t i = 0; i < m_bodies.size(); ++i) {
-            m_bodies[i].force += nodeLocal[i].force;
+            m_bodies[i].force += (*nodeLocal)[i].force;
         }
     }
 

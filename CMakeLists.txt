@@ -87,12 +87,15 @@ function(configure_target targetName linkLng)
 
             -ffast-math
         )
-        if (NOT CMAKE_CXX_COMPILER_ID VERSION_LESS 3.8)
+        if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.8)
+            set(OPTION_CLANG_DEBUGGER lldb CACHE STRING
+                "Debugger for that clang optimizes the DWARF debugging information")
+            set_property(CACHE OPTION_CLANG_DEBUGGER PROPERTY STRINGS gdb lldb)
             target_compile_options(${targetName} PRIVATE
                 $<$<CONFIG:Debug>:-g${OPTION_CLANG_DEBUGGER}>
             )
         endif()
-        if (NOT CMAKE_CXX_COMPILER_ID VERSION_LESS "4.0")
+        if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.0")
             target_compile_options(${targetName} PRIVATE
                 $<$<CONFIG:Debug>:-fno-limit-debug-info>
             )

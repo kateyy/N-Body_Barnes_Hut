@@ -210,5 +210,5 @@ private:
     numa::NodeList m_numaNodes;
     std::vector<WorkerThread> m_workerThreads;
     size_t m_threadCount;
-    std::vector<std::vector<Body>> m_nodeLocalBodies;
+    std::vector<std::unique_ptr<std::vector<Body>>> m_nodeLocalBodies;
 };
