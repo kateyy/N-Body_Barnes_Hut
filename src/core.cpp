@@ -539,6 +539,73 @@ private:
 };
 
 
+class WorkerScheduler
+{
+public:
+    WorkerScheduler()
+    {
+    }
+    
+    void initialize(size_t numberOfWorkers, const std::vector<numa::Node> &numaNodes)
+    {
+        m_workers.resize(numberOfWorkers);
+        m_idleWorkers.resize(numberOfWorkers);
+        m_idleWorkers2.reserve(numberOfWorkers);
+        size_t threadIdx = 0;
+        for (const numa::Node &node : numaNodes) {
+            for (size_t i = 0; i < node.threadCount(); ++i) {
+                m_workers[threadIdx] = WorkerThread(threadIdx, node.cpuids());
+                m_idleWorkers[threadIdx] = &m_workers[threadIdx];
+                ++threadIdx;
+            }
+        }
+        if (threadIdx != numberOfWorkers) {
+            std::cerr << "Dynamic topology???" << std::endl;
+            exit(43);
+        }
+    }
+
+    void run(std::function<void()> func)
+    {
+        if (m_idleWorkers.empty()) {
+            std::unique_lock<std::mutex> lock{ m_mutex };
+            if (m_idleWorkers2.empty()) {
+                m_conditionVariable.wait(lock);
+            }
+            std::swap(m_idleWorkers, m_idleWorkers2);
+        }
+        assert(!m_idleWorkers.empty());
+        WorkerThread * worker = m_idleWorkers.back();
+        assert(worker);
+        m_idleWorkers.pop_back();
+
+        auto runWrapper = [this, func, worker] () {
+            func();
+            const std::lock_guard<std::mutex> lock{ m_mutex };
+            m_idleWorkers2.push_back(worker);
+            m_conditionVariable.notify_one();
+        };
+        worker->run(runWrapper);
+    }
+
+    void waitForAll()
+    {
+        for (auto & worker : m_workers) {
+            worker.wait();
+        }
+        assert(m_workers.size() ==
+            m_idleWorkers.size() + m_idleWorkers2.size());
+    }
+
+private:
+    std::vector<WorkerThread> m_workers;
+    std::vector<WorkerThread *> m_idleWorkers;
+    std::vector<WorkerThread *> m_idleWorkers2;
+    std::mutex m_mutex;
+    std::condition_variable m_conditionVariable;
+};
+
+
 
 bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 {
@@ -604,19 +671,8 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
         [] (size_t currentNum, const numa::Node &node)
         { return currentNum + node.threadCount(); });
 
-    m_workerThreads.resize(m_threadCount);
-    {
-        size_t threadIdx = 0;
-        for (numa::Node &node : m_numaNodes) {
-            for (size_t i = 0; i < node.threadCount(); ++i) {
-                m_workerThreads[threadIdx++] = WorkerThread(i, node.cpuids());
-            }
-        }
-        if (threadIdx != m_threadCount) {
-            std::cerr << "Dynamic topology???" << std::endl;
-            exit(43);
-        }
-    }
+    m_scheduler = std::make_unique<WorkerScheduler>();
+    m_scheduler->initialize(m_threadCount, m_numaNodes);
 
     // Create per-node local storage for the bodies.
     m_nodeLocalBodies.resize(m_numaNodes.size());
@@ -727,7 +783,7 @@ bool Model::updateUnlocked()
         const numa::Node &node = m_numaNodes[nodeId];
         for (size_t localThreadIdx = 0; localThreadIdx < node.threadCount(); ++localThreadIdx) {
             const size_t last = std::min(first + step, numJobs);
-            m_workerThreads[threadIdx].run(std::bind(
+            m_scheduler->run(std::bind(
                 runFunc,
                 first, last, std::ref(*m_nodeLocalBodies[nodeId])));
             first = last;
@@ -740,9 +796,7 @@ bool Model::updateUnlocked()
             break;
         }
     }
-    for (auto & thread : m_workerThreads) {
-        thread.wait();
-    }
+    m_scheduler->waitForAll();
     // accumulate node local results
     for (auto &body : m_bodies) {
         body.force = {0, 0, 0};

@@ -112,6 +112,7 @@ private:
 
 
 class WorkerThread;
+class WorkerScheduler;
 
 class Model
 {
@@ -208,7 +209,7 @@ private:
     timepoint_t m_endTime;
 
     numa::NodeList m_numaNodes;
-    std::vector<WorkerThread> m_workerThreads;
+    std::unique_ptr<WorkerScheduler> m_scheduler;
     size_t m_threadCount;
     std::vector<std::unique_ptr<std::vector<Body>>> m_nodeLocalBodies;
 };
