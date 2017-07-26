@@ -118,7 +118,7 @@ bool initializeBodies(std::vector<Body> &bodies, std::string scheme)
 
 }
 
-int64_t timeDiffNanonSecs(timepoint_t start, timepoint_t end)
+int64_t timeDiffNanoSecs(timepoint_t start, timepoint_t end)
 {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }
@@ -740,7 +740,8 @@ bool Model::updateUnlocked()
 
     if (m_frameLimit > 0 && m_frameCount == m_frameLimit) {
         m_endTime = std::chrono::high_resolution_clock::now();
-        printf("%f\n", timeDiffNanonSecs(m_startTime, m_endTime) / 1e9);
+        m_totalRuntimeSecs = timeDiffNanoSecs(m_startTime, m_endTime) * 1e-9;
+        printf("%f\n", m_totalRuntimeSecs);
         return false;
     }
     m_rootIndices.clear();

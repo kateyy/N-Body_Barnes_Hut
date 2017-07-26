@@ -165,6 +165,7 @@ public:
      * using the bench mode.
      */
     void benchMode();
+    double totalRuntimeSeconds() const { return m_totalRuntimeSecs; }
     
     /** Write current bodies to the outputFileName. */
     bool exportBodies();
@@ -207,6 +208,7 @@ private:
     size_t m_frameCount;
     timepoint_t m_startTime;
     timepoint_t m_endTime;
+    double m_totalRuntimeSecs;
 
     numa::NodeList m_numaNodes;
     std::unique_ptr<WorkerScheduler> m_scheduler;

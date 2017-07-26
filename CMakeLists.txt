@@ -184,6 +184,8 @@ if (OPTION_WITH_PNG_EXPORT)
     )
 endif()
 
+option(OPTION_WITH_BENCHMARK "Add benchmarking target." ON)
+
 add_executable(nbody ${sources})
 configure_target(nbody CXX)
 target_link_libraries(nbody PUBLIC PGASUS::hpinuma_msource)
@@ -206,6 +208,27 @@ if (OPTION_WITH_PNG_EXPORT)
     target_link_libraries(nbody PUBLIC ${PNG_LIBRARIES})
     target_include_directories(nbody SYSTEM PRIVATE ${PNG_INCLUDE_DIRS})
     target_compile_definitions(nbody PRIVATE ${PNG_DEFINITIONS})
+endif()
+
+
+if (OPTION_WITH_BENCHMARK)
+    find_package(Boost COMPONENTS filesystem REQUIRED)
+    add_executable(nbody_benchmark
+        ${CONFIG_FILE}
+        src/core.h
+        src/core.cpp
+        src/bench_main.cpp
+    )
+    configure_target(nbody_benchmark CXX)
+    target_link_libraries(nbody_benchmark PUBLIC
+        PGASUS::hpinuma_msource
+        Boost::filesystem
+    )
+    target_compile_definitions(nbody_benchmark PRIVATE
+        BOOST_FILESYSTEM_NO_DEPRECATED
+    )
+    target_include_directories(nbody_benchmark PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(nbody_benchmark SYSTEM PUBLIC ${GLM_INCLUDE_DIR})
 endif()
 
 
