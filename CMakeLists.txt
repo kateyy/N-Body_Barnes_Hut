@@ -48,15 +48,7 @@ endif()
 
 find_package(PGASUS REQUIRED)
 
-set(PGASUS_PLATFORM_X86_64 0)
-set(PGASUS_PLATFORM_PPC64LE 0)
-if (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
-    set(PGASUS_PLATFORM_X86_64 1)
-elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "ppc64le")
-    set(PGASUS_PLATFORM_PPC64LE 1)
-else()
-    message(WARNING "Unknown platform: \"${CMAKE_SYSTEM_PROCESSOR}\"")
-endif()
+include(cmake/PlatformDetection.cmake)
 
 function(configure_target targetName linkLng)
     set_target_properties(${targetName} PROPERTIES LINKER_LANGUAGE ${linkLng})
@@ -118,7 +110,12 @@ function(configure_target targetName linkLng)
             _GLIBCXX_USE_CXX11_ABI
             $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
         )
-        if (NOT PGASUS_PLATFORM_PPC64LE)
+        if (PGASUS_PLATFORM_PPC64LE)
+            # See https://www.ibm.com/developerworks/community/wikis/home?lang=en#!/wiki/W51a7ffcf4dfd_4b40_9d82_446ebc23c550/page/IBM%20Advance%20Toolchain%20for%20PowerLinux%20Documentation?section=optimization
+            # Ubuntu 16.04 packaged gcc does not support -march flags for POWER.
+            # IBM Advance Toolchain 10.0 sets "-mcpu=power8 -mtune=power8" by default.
+            # So nothing to set here for the required setup.
+        else()  # generic case for other platforms, including x86
             target_compile_options(${targetName} PRIVATE
                 -march=native -mtune=native -malign-double
             )

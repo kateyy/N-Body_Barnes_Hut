@@ -22,8 +22,6 @@
 
 #include <omp.h>
 
-#include <pthread.h>
-
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/norm.hpp>
 
@@ -398,215 +396,6 @@ void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, 
     return;
 }
 
-
-
-class WorkerThread
-{
-public:
-    WorkerThread(size_t threadId, const std::vector<int> &cpuIds)
-        : m_impl{ std::make_unique<Impl>() }
-    {
-        if (cpuIds.empty()) {
-            std::cerr << "No CPUs assigned to WorkerThread: " << threadId << std::endl;
-            exit(1);
-        }
-        m_impl->threadId = threadId;
-        m_impl->cpuIds = cpuIds;
-        m_impl->keepRunning = true;
-        // Synchronize thread initialization:
-        // Lock the mutex and start the thread. The thread now tries to acquire
-        // the mutex lock. Wait for the condition variable, which unlocks the
-        // mutex. Now the thread acquires the mutex lock and notifies the
-        // condition variable. wait() here can only return once the thread
-        // releases the mutex lock. This happens when it waits for the condition
-        // variable. In this state, it is ready to wait for a job to execute.
-        std::unique_lock<std::mutex> lock{ m_impl->mutex };
-        m_impl->thread = std::thread(&threadRun, std::ref(*m_impl));
-        m_impl->hasJobToAcknowledge = true;
-        while (m_impl->hasJobToAcknowledge) {
-            m_impl->threadSync.wait(lock);
-        }
-    }
-    ~WorkerThread() {
-        if (!m_impl) {
-            return;
-        }
-        m_impl->keepRunning = false;
-        m_impl->function = {};
-        m_impl->threadSync.notify_one();
-        wait();
-        m_impl->thread.join();
-    }
-    WorkerThread() {}
-    WorkerThread(WorkerThread && other) : WorkerThread()
-    {
-        swap(*this, other);
-    }
-    WorkerThread& operator=(WorkerThread && other) {
-        swap(*this, other);
-        return *this;
-    }
-    friend void swap(WorkerThread &lhs, WorkerThread &rhs) {
-        using std::swap;
-        swap(lhs.m_impl, rhs.m_impl);
-    }
-    WorkerThread(const WorkerThread &other) = delete;
-    void operator=(const WorkerThread &other) = delete;
-
-    void run(const std::function<void()> &func)
-    {
-        if (!m_impl) {
-            return;
-        }
-        wait();
-        m_impl->function = func;
-        m_impl->hasJobToAcknowledge = true;
-        // Ensure that the next wait() can only return once threadRun() actually
-        // started and finished the new job.
-        std::unique_lock<std::mutex> lock{ m_impl->jobAcknowledgeMutex };
-        m_impl->threadSync.notify_one();
-        while (m_impl->hasJobToAcknowledge) {
-            m_impl->jobAcknowledge.wait(lock);
-        }
-    }
-
-    void wait()
-    {
-        if (!m_impl || !m_impl->function) {
-            return;
-        }
-        // This mutex is only unlocked if the thread is waiting.
-        const std::unique_lock<std::mutex> lock{ m_impl->mutex };
-    }
-
-private:
-    struct Impl {
-        size_t threadId;
-        std::vector<int> cpuIds;
-        bool keepRunning;
-        bool hasJobToAcknowledge;
-
-        std::thread thread;
-        std::mutex mutex;
-        std::condition_variable threadSync;
-        std::function<void()> function;
-        std::mutex jobAcknowledgeMutex;
-        std::condition_variable jobAcknowledge;
-    };
-
-    static void threadRun(WorkerThread::Impl & impl)
-    {
-        {
-            cpu_set_t cpuSet;
-            pthread_t pthread = pthread_self();
-            CPU_ZERO(&cpuSet);
-            for (const int i : impl.cpuIds) {
-                CPU_SET(i, &cpuSet);
-            }
-            if (0 != pthread_setaffinity_np(pthread, sizeof(cpu_set_t), &cpuSet)) {
-                std::cerr << "pthread affinity failed" << std::endl;
-                exit(21);
-            }
-        }
-
-        std::unique_lock<std::mutex> lock{ impl.mutex };
-        // Let the initialization know that this thread is ready now:
-        impl.hasJobToAcknowledge = false;
-        impl.threadSync.notify_one();
-        while (true) {
-            // Wait until run() notifies for a now job or a spurious wakeup
-            // occurs.
-            while (impl.keepRunning && !impl.hasJobToAcknowledge) {
-                impl.threadSync.wait(lock);
-            }
-            if (!impl.keepRunning) {
-                break;
-            }
-            {
-                std::unique_lock<std::mutex> jobLock{ impl.jobAcknowledgeMutex };
-                impl.jobAcknowledge.notify_one();
-                impl.hasJobToAcknowledge = false;
-            }
-            if (impl.function) {
-                impl.function();
-                impl.function = {};
-            }
-        }
-    }
-
-private:
-    std::unique_ptr<Impl> m_impl;
-};
-
-
-class WorkerScheduler
-{
-public:
-    WorkerScheduler()
-    {
-    }
-    
-    void initialize(size_t numberOfWorkers, const std::vector<numa::Node> &numaNodes)
-    {
-        m_workers.resize(numberOfWorkers);
-        m_idleWorkers.resize(numberOfWorkers);
-        m_idleWorkers2.reserve(numberOfWorkers);
-        size_t threadIdx = 0;
-        for (const numa::Node &node : numaNodes) {
-            for (size_t i = 0; i < node.threadCount(); ++i) {
-                m_workers[threadIdx] = WorkerThread(threadIdx, node.cpuids());
-                m_idleWorkers[threadIdx] = &m_workers[threadIdx];
-                ++threadIdx;
-            }
-        }
-        if (threadIdx != numberOfWorkers) {
-            std::cerr << "Dynamic topology???" << std::endl;
-            exit(43);
-        }
-    }
-
-    void run(std::function<void()> func)
-    {
-        if (m_idleWorkers.empty()) {
-            std::unique_lock<std::mutex> lock{ m_mutex };
-            if (m_idleWorkers2.empty()) {
-                m_conditionVariable.wait(lock);
-            }
-            std::swap(m_idleWorkers, m_idleWorkers2);
-        }
-        assert(!m_idleWorkers.empty());
-        WorkerThread * worker = m_idleWorkers.back();
-        assert(worker);
-        m_idleWorkers.pop_back();
-
-        auto runWrapper = [this, func, worker] () {
-            func();
-            const std::lock_guard<std::mutex> lock{ m_mutex };
-            m_idleWorkers2.push_back(worker);
-            m_conditionVariable.notify_one();
-        };
-        worker->run(runWrapper);
-    }
-
-    void waitForAll()
-    {
-        for (auto & worker : m_workers) {
-            worker.wait();
-        }
-        assert(m_workers.size() ==
-            m_idleWorkers.size() + m_idleWorkers2.size());
-    }
-
-private:
-    std::vector<WorkerThread> m_workers;
-    std::vector<WorkerThread *> m_idleWorkers;
-    std::vector<WorkerThread *> m_idleWorkers2;
-    std::mutex m_mutex;
-    std::condition_variable m_conditionVariable;
-};
-
-
-
 bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 {
     m_frameCount = 0;
@@ -667,12 +456,20 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
             m_numaNodes.push_back(node);
         }
     }
-    m_threadCount = std::accumulate(m_numaNodes.begin(), m_numaNodes.end(), size_t(0),
-        [] (size_t currentNum, const numa::Node &node)
-        { return currentNum + node.threadCount(); });
 
-    m_scheduler = std::make_unique<WorkerScheduler>();
-    m_scheduler->initialize(m_threadCount, m_numaNodes);
+    const char *ompPlacesEnv = std::getenv("OMP_PLACES");
+    if (!ompPlacesEnv || ompPlacesEnv[0] == '\0') {
+        std::cerr << "OMP_PLACES environment variable should be set in order "
+            "to statically bind OpenMP threads to NUMA nodes!" << std::endl
+            << "E.g.: OMP_PLACES=sockets" << std::endl;
+    }
+    if (size_t(omp_get_num_places()) != m_numaNodes.size()) {
+        std::cerr << "Number of OpenMP places does not match number of "
+            "detected NUMA nodes. What should I do???" << std::endl
+            << "Number of places: " << omp_get_num_places() << std::endl
+            << "Number of nodes: " << m_numaNodes.size() << std::endl;
+        return false;
+    }
 
     // Create per-node local storage for the bodies.
     m_nodeLocalBodies.resize(m_numaNodes.size());
@@ -767,37 +564,25 @@ bool Model::updateUnlocked()
         std::copy_n(m_bodies.begin(), m_bodies.size(), nodeLocal->begin());
     }
 
-    auto runFunc = [this] (size_t startRootIdx, size_t endRootIdx, std::vector<Body> & bodies) {
-        for (size_t ri = startRootIdx; ri < endRootIdx; ++ri) {
-            const NodeIndex_t rootIdx = m_rootIndices[ri];
-            const Node& root = m_nodes[rootIdx];
-            for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
-                forceOverNode(rootIdx, invalidNodeIdx, bodies[root.bodies()[bodyIdx]], false);
+#pragma omp parallel for
+    for (size_t ri = 0; ri < m_rootIndices.size(); ++ri) {
+        const NodeIndex_t rootIdx = m_rootIndices[ri];
+        const Node& root = m_nodes[rootIdx];
+#pragma omp parallel for
+        for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
+            const int place = omp_get_place_num();
+            assert(numa::Node::curr().valid());
+            assert(numa::Node::curr().physicalId() == place);
+            if (place < 0 || size_t(place) >= m_numaNodes.size()) {
+                std::cerr << "invalid thread place in nested OpenMP parallel region!" << std::endl;
+                exit(42);
             }
-        }
-    };
-    const size_t numJobs = m_rootIndices.size();
-    const size_t step = size_t(std::ceil(float(numJobs) / m_threadCount));
-    size_t first = 0;
-    size_t threadIdx = 0;
-    for (size_t nodeId = 0; nodeId < m_numaNodes.size(); ++nodeId) {
-        const numa::Node &node = m_numaNodes[nodeId];
-        for (size_t localThreadIdx = 0; localThreadIdx < node.threadCount(); ++localThreadIdx) {
-            const size_t last = std::min(first + step, numJobs);
-            m_scheduler->run(std::bind(
-                runFunc,
-                first, last, std::ref(*m_nodeLocalBodies[nodeId])));
-            first = last;
-            ++threadIdx;
-            if (first == numJobs) {
-                break;
-            }
-        }
-        if (first == numJobs) {
-            break;
+            const size_t numaNodeId = size_t(place);
+            auto &bodies = *m_nodeLocalBodies[numaNodeId];
+            forceOverNode(rootIdx, invalidNodeIdx, bodies[root.bodies()[bodyIdx]], false);
         }
     }
-    m_scheduler->waitForAll();
+
     // accumulate node local results
     for (auto &body : m_bodies) {
         body.force = {0, 0, 0};
