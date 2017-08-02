@@ -46,6 +46,22 @@ if (OPTION_WITH_PNG_EXPORT)
     find_package(PNG REQUIRED)
 endif()
 
+
+include(ExternalProject)
+
+ExternalProject_Add(
+    gperftools
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools_build
+    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools # hack: run autogen
+    DOWNLOAD_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools/autogen.sh
+    CONFIGURE_COMMAND
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools/configure
+            --prefix=${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools
+    BUILD_COMMAND
+        make -j8
+)
+
 set(PGASUS_PLATFORM_X86_64 0)
 set(PGASUS_PLATFORM_PPC64LE 0)
 if (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
@@ -80,6 +96,11 @@ function(configure_target targetName linkLng)
 
             -ffast-math
         )
+        target_link_libraries(${targetName} PUBLIC
+            -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+            optimized "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal.so"
+            debug "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal_debug.so"
+        )
         if (NOT CMAKE_CXX_COMPILER_ID VERSION_LESS 3.8)
             target_compile_options(${targetName} PRIVATE
                 $<$<CONFIG:Debug>:-g${OPTION_CLANG_DEBUGGER}>
@@ -107,6 +128,11 @@ function(configure_target targetName linkLng)
         target_compile_definitions(${targetName} PUBLIC
             $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
         )
+        target_link_libraries(${targetName} PUBLIC
+            -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+            optimized "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal.so"
+            debug "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal_debug.so"
+        )
         if (NOT PGASUS_PLATFORM_PPC64LE)
             target_compile_options(${targetName} PRIVATE
                 -march=native -mtune=native -malign-double
@@ -120,34 +146,35 @@ function(configure_target targetName linkLng)
             target_link_libraries(${targetName} PRIVATE -lm)
         endif()
 
-    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-        target_compile_options(${targetName} PRIVATE
-            /W4 /we4013 /wd4201 /wd4251 /wd4505
-            /MP
-            /Zc:forScope /Zc:inline /Zc:rvalueCast /Zc:wchar_t
-            $<$<CONFIG:Debug>:      /F 33554432>
-            $<$<CONFIG:Release>:    /F 8388608>
-            $<$<CONFIG:Release>:
-                /Oi /Ot /Oy /GL /fp:fast /arch:AVX2 /GS-
-            >
-            $<$<CONFIG:RelWithDebInfo>:
-                /Oy- /fp:fast /arch:AVX2 /GS- /Zi
-            >
-        )
-        target_compile_definitions(${targetName} PRIVATE _CRT_SECURE_NO_WARNINGS)
-        set_target_properties(${targetName} PROPERTIES
-            LINK_FLAGS                  "${OpenMP_${linkLng}_LIB_NAMES}"
-            LINK_FLAGS_DEBUG            "/STACK:33554432"
-            LINK_FLAGS_RELEASE          "/STACK:8388608 /OPT:REF /OPT:ICF /LTCG"
-            LINK_FLAGS_RELWITHDEBINFO   "/STACK:8388608 /DEBUG /INCREMENTAL:NO"
-        )
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "XL")
-        target_compile_options(${targetName} PRIVATE
-            -std=c++1y
-            $<$<CONFIG:Release>: -O5>
-        )
+    # elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    #     target_compile_options(${targetName} PRIVATE
+    #         /W4 /we4013 /wd4201 /wd4251 /wd4505
+    #         /MP
+    #         /Zc:forScope /Zc:inline /Zc:rvalueCast /Zc:wchar_t
+    #         $<$<CONFIG:Debug>:      /F 33554432>
+    #         $<$<CONFIG:Release>:    /F 8388608>
+    #         $<$<CONFIG:Release>:
+    #             /Oi /Ot /Oy /GL /fp:fast /arch:AVX2 /GS-
+    #         >
+    #         $<$<CONFIG:RelWithDebInfo>:
+    #             /Oy- /fp:fast /arch:AVX2 /GS- /Zi
+    #         >
+    #     )
+    #     target_compile_definitions(${targetName} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    #     set_target_properties(${targetName} PROPERTIES
+    #         LINK_FLAGS                  "${OpenMP_${linkLng}_LIB_NAMES}"
+    #         LINK_FLAGS_DEBUG            "/STACK:33554432"
+    #         LINK_FLAGS_RELEASE          "/STACK:8388608 /OPT:REF /OPT:ICF /LTCG"
+    #         LINK_FLAGS_RELWITHDEBINFO   "/STACK:8388608 /DEBUG /INCREMENTAL:NO"
+    #     )
+    # elseif(CMAKE_CXX_COMPILER_ID STREQUAL "XL")
+    #     target_compile_options(${targetName} PRIVATE
+    #         -std=c++1y
+    #         $<$<CONFIG:Release>: -O5>
+    #     )
     else()
         message(WARNING "Untested compiler: ${CMAKE_CXX_COMPILER_ID}")
+        message(WARNING "Compiler not setup for gperftools/tcmalloc")
     endif()
 endfunction()
 

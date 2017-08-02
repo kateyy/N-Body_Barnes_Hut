@@ -496,8 +496,7 @@ bool Model::updateUnlocked()
 
     if (m_frameLimit > 0 && m_frameCount == m_frameLimit) {
         m_endTime = std::chrono::high_resolution_clock::now();
-        printf("Simulation time Elapsed = %f\n",
-            timeDiffNanonSecs(m_startTime, m_endTime) / 1e9);
+        printf("%f\n", timeDiffNanonSecs(m_startTime, m_endTime) / 1e9);
         return false;
     }
     m_rootIndices.clear();
