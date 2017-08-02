@@ -2,5 +2,5 @@
 *.bin
 *.csv
 
-build*/
-
+/build*/
+/.vscode/

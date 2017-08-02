@@ -29,6 +29,9 @@ cmake_dependent_option(OPTION_WITH_PNG_EXPORT
 option(OPTION_PROFILING
     "Setup compile flags for profiling with GPROF (gcc only)." OFF)
 
+option(OPTION_WITH_BENCHMARK "Add benchmarking target." ON)
+option(OPTION_WITH_GPERFTOOLS "Use gperftools allocator" ON)
+
 find_package(OpenMP REQUIRED)
 find_package(glm QUIET)
 if (NOT glm_FOUND)
@@ -47,30 +50,25 @@ if (OPTION_WITH_PNG_EXPORT)
 endif()
 
 
-include(ExternalProject)
+if (OPTION_WITH_GPERFTOOLS)
+    include(ExternalProject)
 
-ExternalProject_Add(
-    gperftools
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools
-    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools_build
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools # hack: run autogen
-    DOWNLOAD_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools/autogen.sh
-    CONFIGURE_COMMAND
-        ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools/configure
-            --prefix=${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools
-    BUILD_COMMAND
-        make -j8
-)
-
-set(PGASUS_PLATFORM_X86_64 0)
-set(PGASUS_PLATFORM_PPC64LE 0)
-if (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
-    set(PGASUS_PLATFORM_X86_64 1)
-elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "ppc64le")
-    set(PGASUS_PLATFORM_PPC64LE 1)
-else()
-    message(WARNING "Unknown platform: \"${CMAKE_SYSTEM_PROCESSOR}\"")
+    ExternalProject_Add(
+        gperftools
+        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools
+        PREFIX ${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools_build
+        DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools # hack: run autogen
+        DOWNLOAD_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools/autogen.sh
+        CONFIGURE_COMMAND
+            ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/gperftools/configure
+                --prefix=${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools
+        BUILD_COMMAND
+            make -j8
+    )
 endif()
+
+include(cmake/PlatformDetection.cmake)
+
 
 function(configure_target targetName linkLng)
     set_target_properties(${targetName} PROPERTIES LINKER_LANGUAGE ${linkLng})
@@ -96,17 +94,22 @@ function(configure_target targetName linkLng)
 
             -ffast-math
         )
-        target_link_libraries(${targetName} PUBLIC
-            -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-            optimized "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal.so"
-            debug "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal_debug.so"
-        )
-        if (NOT CMAKE_CXX_COMPILER_ID VERSION_LESS 3.8)
+        if (OPTION_WITH_GPERFTOOLS)
+            target_link_libraries(${targetName} PUBLIC
+                -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+                optimized "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal.so"
+                debug "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal_debug.so"
+            )
+        endif()
+        if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.8)
+            set(OPTION_CLANG_DEBUGGER lldb CACHE STRING
+                "Debugger for that clang optimizes the DWARF debugging information")
+            set_property(CACHE OPTION_CLANG_DEBUGGER PROPERTY STRINGS gdb lldb)
             target_compile_options(${targetName} PRIVATE
                 $<$<CONFIG:Debug>:-g${OPTION_CLANG_DEBUGGER}>
             )
         endif()
-        if (NOT CMAKE_CXX_COMPILER_ID VERSION_LESS "4.0")
+        if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.0")
             target_compile_options(${targetName} PRIVATE
                 $<$<CONFIG:Debug>:-fno-limit-debug-info>
             )
@@ -126,14 +129,22 @@ function(configure_target targetName linkLng)
             -ffast-math
         )
         target_compile_definitions(${targetName} PUBLIC
+            _GLIBCXX_USE_CXX11_ABI
             $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
         )
-        target_link_libraries(${targetName} PUBLIC
-            -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-            optimized "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal.so"
-            debug "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal_debug.so"
-        )
-        if (NOT PGASUS_PLATFORM_PPC64LE)
+        if (OPTION_WITH_GPERFTOOLS)
+            target_link_libraries(${targetName} PUBLIC
+                -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+                optimized "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal.so"
+                debug "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal_debug.so"
+            )
+        endif()
+        if (PGASUS_PLATFORM_PPC64LE)
+            # See https://www.ibm.com/developerworks/community/wikis/home?lang=en#!/wiki/W51a7ffcf4dfd_4b40_9d82_446ebc23c550/page/IBM%20Advance%20Toolchain%20for%20PowerLinux%20Documentation?section=optimization
+            # Ubuntu 16.04 packaged gcc does not support -march flags for POWER.
+            # IBM Advance Toolchain 10.0 sets "-mcpu=power8 -mtune=power8" by default.
+            # So nothing to set here for the required setup.
+        else()  # generic case for other platforms, including x86
             target_compile_options(${targetName} PRIVATE
                 -march=native -mtune=native -malign-double
             )
@@ -146,32 +157,6 @@ function(configure_target targetName linkLng)
             target_link_libraries(${targetName} PRIVATE -lm)
         endif()
 
-    # elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    #     target_compile_options(${targetName} PRIVATE
-    #         /W4 /we4013 /wd4201 /wd4251 /wd4505
-    #         /MP
-    #         /Zc:forScope /Zc:inline /Zc:rvalueCast /Zc:wchar_t
-    #         $<$<CONFIG:Debug>:      /F 33554432>
-    #         $<$<CONFIG:Release>:    /F 8388608>
-    #         $<$<CONFIG:Release>:
-    #             /Oi /Ot /Oy /GL /fp:fast /arch:AVX2 /GS-
-    #         >
-    #         $<$<CONFIG:RelWithDebInfo>:
-    #             /Oy- /fp:fast /arch:AVX2 /GS- /Zi
-    #         >
-    #     )
-    #     target_compile_definitions(${targetName} PRIVATE _CRT_SECURE_NO_WARNINGS)
-    #     set_target_properties(${targetName} PROPERTIES
-    #         LINK_FLAGS                  "${OpenMP_${linkLng}_LIB_NAMES}"
-    #         LINK_FLAGS_DEBUG            "/STACK:33554432"
-    #         LINK_FLAGS_RELEASE          "/STACK:8388608 /OPT:REF /OPT:ICF /LTCG"
-    #         LINK_FLAGS_RELWITHDEBINFO   "/STACK:8388608 /DEBUG /INCREMENTAL:NO"
-    #     )
-    # elseif(CMAKE_CXX_COMPILER_ID STREQUAL "XL")
-    #     target_compile_options(${targetName} PRIVATE
-    #         -std=c++1y
-    #         $<$<CONFIG:Release>: -O5>
-    #     )
     else()
         message(WARNING "Untested compiler: ${CMAKE_CXX_COMPILER_ID}")
         message(WARNING "Compiler not setup for gperftools/tcmalloc")
@@ -200,6 +185,7 @@ if (OPTION_WITH_PNG_EXPORT)
     )
 endif()
 
+
 add_executable(nbody ${sources})
 configure_target(nbody CXX)
 
@@ -221,6 +207,26 @@ if (OPTION_WITH_PNG_EXPORT)
     target_link_libraries(nbody PUBLIC ${PNG_LIBRARIES})
     target_include_directories(nbody SYSTEM PRIVATE ${PNG_INCLUDE_DIRS})
     target_compile_definitions(nbody PRIVATE ${PNG_DEFINITIONS})
+endif()
+
+
+if (OPTION_WITH_BENCHMARK)
+    find_package(Boost COMPONENTS filesystem REQUIRED)
+    add_executable(nbody_benchmark
+        ${CONFIG_FILE}
+        src/core.h
+        src/core.cpp
+        src/bench_main.cpp
+    )
+    configure_target(nbody_benchmark CXX)
+    target_link_libraries(nbody_benchmark PUBLIC
+        Boost::filesystem
+    )
+    target_compile_definitions(nbody_benchmark PRIVATE
+        BOOST_FILESYSTEM_NO_DEPRECATED
+    )
+    target_include_directories(nbody_benchmark PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(nbody_benchmark SYSTEM PUBLIC ${GLM_INCLUDE_DIR})
 endif()
 
 
