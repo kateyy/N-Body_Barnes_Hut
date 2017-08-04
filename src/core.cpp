@@ -26,6 +26,7 @@
 #include <glm/gtx/norm.hpp>
 
 #include <PGASUS/malloc.hpp>
+#include <PGASUS/base/topology.hpp>
 
 #include "core.h"
 
@@ -457,20 +458,6 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
         }
     }
 
-    const char *ompPlacesEnv = std::getenv("OMP_PLACES");
-    if (!ompPlacesEnv || ompPlacesEnv[0] == '\0') {
-        std::cerr << "OMP_PLACES environment variable should be set in order "
-            "to statically bind OpenMP threads to NUMA nodes!" << std::endl
-            << "E.g.: OMP_PLACES=sockets" << std::endl;
-    }
-    if (size_t(omp_get_num_places()) != m_numaNodes.size()) {
-        std::cerr << "Number of OpenMP places does not match number of "
-            "detected NUMA nodes. What should I do???" << std::endl
-            << "Number of places: " << omp_get_num_places() << std::endl
-            << "Number of nodes: " << m_numaNodes.size() << std::endl;
-        return false;
-    }
-
     // Create per-node local storage for the bodies.
     m_nodeLocalBodies.resize(m_numaNodes.size());
     for (size_t nodeId = 0; nodeId < m_numaNodes.size(); ++nodeId) {
@@ -569,7 +556,7 @@ bool Model::updateUnlocked()
         const Node& root = m_nodes[rootIdx];
 #pragma omp parallel for
         for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
-            const int place = omp_get_place_num();
+            const int place = numa::util::Topology::get()->curr_numa_node()->id;
             assert(numa::Node::curr().valid());
             assert(numa::Node::curr().physicalId() == place);
             if (place < 0 || size_t(place) >= m_numaNodes.size()) {
