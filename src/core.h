@@ -64,7 +64,7 @@ struct Body
 
 
 using timepoint_t = std::chrono::time_point<std::chrono::high_resolution_clock>;
-int64_t timeDiffNanonSecs(timepoint_t start, timepoint_t end);
+int64_t timeDiffNanoSecs(timepoint_t start, timepoint_t end);
 
 
 class Node
@@ -167,6 +167,13 @@ public:
     /** Write current bodies to the outputFileName. */
     bool exportBodies();
 
+    /**
+     * For manual model update calls: update() locks, supporting asynchronous
+     * calls to lockedData(). updateUnlocked() does not lock and is useful for
+     * non-interactive/non-visual benchmarking.
+     */
+    bool update();
+    bool updateUnlocked();
 
     bool render;
     bool visualMode;
@@ -174,8 +181,6 @@ public:
     std::string outputFileName;
 
 private:
-    bool update();
-    bool updateUnlocked();
     void resetNodes();
     void divideNode(NodeIndex_t nodeIdx);
     void forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, bool inverse);

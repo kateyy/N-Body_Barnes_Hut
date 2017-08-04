@@ -538,7 +538,6 @@ bool Model::updateUnlocked()
     if (m_frameLimit > 0 && m_frameCount == m_frameLimit) {
         m_endTime = std::chrono::high_resolution_clock::now();
         m_totalRuntimeSecs = timeDiffNanoSecs(m_startTime, m_endTime) * 1e-9;
-        printf("%f\n", m_totalRuntimeSecs);
         return false;
     }
     m_rootIndices.clear();
@@ -605,7 +604,7 @@ bool Model::updateUnlocked()
     if (PRINT_TIMINGS)
     {
         const auto endTime = std::chrono::high_resolution_clock::now();
-        std::cout << "Compute time: " << std::setw(11) << timeDiffNanonSecs(startTime, endTime) / 1000
+        std::cout << "Compute time: " << std::setw(11) << timeDiffNanoSecs(startTime, endTime) / 1000
             << "micro seconds, Frame: " << m_frameCount << std::endl;
     }
     return true;

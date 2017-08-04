@@ -219,6 +219,7 @@ int main(int argc, char **argv)
 #endif
     {
         model.benchMode();
+        std::cout << model.totalRuntimeSeconds() << std::endl;
     }
     return 0;
 }

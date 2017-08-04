@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -16,7 +17,7 @@
 using namespace config;
 
 
-int main(int /*argc*/, char **/*argv*/)
+int main(int argc, char **argv)
 {
     const auto & numaNodes = numa::NodeList::logicalNodes();
     // TODO use the largest/fasted node instead?
@@ -29,6 +30,82 @@ int main(int /*argc*/, char **/*argv*/)
     const numa::Node homeNode = *homeNodeIt;
     // By default all memory is allocated on a "home" node.
     const numa::PlaceGuard numaGuard{ homeNode };
+
+    enum class Mode
+    {
+        timePerSize,
+        timePerStep
+    };
+    size_t defaultNumBodies = 50000;
+    std::string defaultScheme = "sphere";
+    size_t defaultFrameLimit = 50;
+    const Mode benchMode = [argc, argv, &defaultNumBodies, &defaultScheme, &defaultFrameLimit] () {
+        if (argc == 1) {
+            return Mode::timePerSize;
+        }
+        if (argc >= 2) {
+            const auto modeStr = std::string(argv[1]);
+            if (modeStr == "timePerSize") { return Mode::timePerSize; }
+            if (modeStr == "timePerStep") {
+                if (argc >= 3) { defaultNumBodies = std::stoull(argv[2]); }
+                if (argc >= 4) { defaultScheme = argv[3]; }
+                if (argc >= 5) { defaultFrameLimit = std::stoull(argv[4]); }
+                return Mode::timePerStep;
+            }
+        }
+        std::cerr << "Invalid parameters!" << std::endl;
+        exit(1);
+    }();
+
+    static const std::string dirName = "source_points";
+    auto bodyFileName = [] (size_t bodyCount, const std::string &bodyScheme) {
+        return dirName + "/" + bodyScheme + "_" + std::to_string(bodyCount) + "_bodies";
+    };
+    boost::filesystem::create_directory(dirName);
+
+    auto createBodiesFile = [bodyFileName](size_t bodyCount, const std::string &bodyScheme) {
+        const auto fileName = bodyFileName(bodyCount, bodyScheme);
+        if (boost::filesystem::exists(fileName)) {
+            return fileName;
+        }
+        Model model;
+        model.visualMode = false;
+        model.outputFileName = fileName;
+        if (!model.init(bodyScheme, bodyCount)) {
+            std::cerr << "Model setup failed" << std::endl;
+            exit(2);
+        }
+        if (!model.exportBodies()) {
+            std::cerr << "Body export failed. Target file: " << model.outputFileName << std::endl;
+            exit(3);
+        }
+        return fileName;
+    };
+
+
+    if (benchMode == Mode::timePerStep) {
+        Model model;
+        model.visualMode = false;
+        model.setFrameLimit(defaultFrameLimit);
+        model.inputFileName = createBodiesFile(defaultNumBodies, defaultScheme);
+        if (!model.init("", 0)) {   // read bodies from file
+            std::cerr << "Model init failed, reading from" << model.inputFileName << std::endl;
+            return 3;
+        }
+        while (true) {
+            const auto start = std::chrono::high_resolution_clock::now();
+            if (!model.updateUnlocked()) {
+                break;
+            }
+            const auto end = std::chrono::high_resolution_clock::now();
+            std::cout << model.frameCount() << ";"
+                << timeDiffNanoSecs(start, end) * 1e-6 << std::endl;
+        }
+        std::cerr << "Total runtime: " << model.totalRuntimeSeconds() << "s" << std::endl;
+        return 0;
+    }
+
+
 
     // Repeat the benchmark N times:
     const size_t benchRepetitions = 10;
@@ -52,29 +129,8 @@ int main(int /*argc*/, char **/*argv*/)
         }
         return its;
     }();
-    static const std::string dirName = "source_points";
-    static const std::string bodyScheme = "sphere";
-    auto bodyFileName = [] (size_t bodyCount) {
-        return dirName + "/" + bodyScheme + "_" + std::to_string(bodyCount) + "_bodies";
-    };
-    boost::filesystem::create_directory(dirName);
     for (const auto & pair : countsIterations) {
-        const size_t count = pair.first;
-        const auto fileName = bodyFileName(count);
-        if (boost::filesystem::exists(fileName)) {
-            continue;
-        }
-        Model model;
-        model.visualMode = false;
-        model.outputFileName = fileName;
-        if (!model.init(bodyScheme, count)) {
-            std::cerr << "Model setup failed" << std::endl;
-            return 1;
-        }
-        if (!model.exportBodies()) {
-            std::cerr << "Body export failed. Target file: " << model.outputFileName << std::endl;
-            return 2;
-        }
+        createBodiesFile(pair.first, defaultScheme);
     }
 
     struct Measurement {
@@ -91,7 +147,7 @@ int main(int /*argc*/, char **/*argv*/)
         mes.numberOfSimulationSteps = pair.second;
         mes.timePerRunSecs.reserve(benchRepetitions);
         std::cerr << "Number of bodies: " << mes.numberOfBodies << " " << std::flush;
-        const auto fileName = bodyFileName(mes.numberOfBodies);
+        const auto fileName = bodyFileName(mes.numberOfBodies, defaultScheme);
         for (size_t i = 0; i < benchRepetitions; ++i) {
             Model model;
             model.visualMode = false;
