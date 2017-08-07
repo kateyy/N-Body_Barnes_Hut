@@ -431,6 +431,13 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
                 return false;
             }
             m_bodies.emplace_back(body);
+            if (m_bodies.size() == numBodies) {
+                break;
+            }
+        }
+        if (numBodies > 0 && m_bodies.size() != numBodies) {
+            std::cerr << "Specified source file has less points than requested!" << std::endl;
+            return false;
         }
         m_bodies.shrink_to_fit();
         m_nodes.reserve(m_bodies.size());
