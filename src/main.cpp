@@ -48,6 +48,7 @@ struct Args
     std::string inputFileName;
     std::string outputFileName;
     bool generatorMode = false;
+    std::string homeNodePolicy;
 
     void printHelp() {
         std::cerr << "Usage:" << std::endl
@@ -59,12 +60,13 @@ struct Args
             << "        Line format: position.x y z mass speed.x y z" << std::endl
             << "[-o|-o] outputFileName.xyzmabc - Export bodies after each iteration." << std::endl
             << "[-g|-G] - Generator mode: generate bodies, export to outputFileName and exit." << std::endl
-            << "[-p|-P] - Print sizeof(Body)-sizeof(std::mutex), sizeof(std::mutex), and exit." << std::endl
 #ifdef OPTION_WITH_RENDERING
-            << "[-v|-V] 0|1 - Enable visual mode. Default: Enabled." << std::endl;
+            << "[-v|-V] 0|1 - Enable visual mode. Default: Enabled." << std::endl
 #else
-            << "[-v|-V] 0|1 - Enable visual mode. NOT AVAILBLE IN THE CURRENT BUILD." << std::endl;
+            << "[-v|-V] 0|1 - Enable visual mode. NOT AVAILBLE IN THE CURRENT BUILD." << std::endl
 #endif
+            << "[-p|-P] policyOrNodeId - Provide an ID of NUMA node used as home node "
+                << "or set a policy (currently supported: \"interleave\")" << std::endl;
     }
 };
 
@@ -96,26 +98,6 @@ Args::Args(int argc, char **argv)
                 ++n;
             }
             continue;
-        case 'p':
-        case 'P': {
-                const size_t size_bytes = sizeof(Body)-sizeof(std::mutex);
-                double size = size_bytes;
-                int unit = 0;
-                while (size > 1024.0) {
-                    size /= 1024.0;
-                    ++unit;
-                }
-                const std::vector<std::string> units { "bytes", "KB", "MB", "GB", "TB" };
-                std::cout << "sizeof(Body)-sizeof(std::mutex): " << sizeof(Body)-sizeof(std::mutex) << " ";
-                if (unit == 0) {
-                    std::cout << units[0] << std::endl;
-                } else {
-                    std::cout << units[0] << " (" << size_t(size) << " " << units[unit] << ")" << std::endl;
-                }
-                std::cout << "sizeof(std::mutex):              " << sizeof(std::mutex) << std::endl;
-                std::cout << "sizeof(Body):                    " << sizeof(Body) << std::endl;
-                exit(0);
-            }
         }
 
         if (!value) {
@@ -144,6 +126,10 @@ Args::Args(int argc, char **argv)
         case 'V':
             visualMode = std::atoi(value) != 0;
             break;
+        case 'p':
+        case 'P':
+            homeNodePolicy = value;
+            break;
         default:
             std::cerr << "Invalid option: " << option << std::endl;
             printHelp();
@@ -155,19 +141,45 @@ Args::Args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    const auto & numaNodes = numa::NodeList::logicalNodes();
-    // TODO use the largest/fasted node instead?
-    auto homeNodeIt = std::find_if(numaNodes.begin(), numaNodes.end(), [] (const numa::Node & node) {
-        return node.memorySize() > 0; });
-    if (homeNodeIt == numaNodes.end()) {
-        std::cerr << "No valid NUMA node found." << std::endl;
-        return 1;
+    const Args args(argc, argv);
+
+    numa::Node homeNode;
+
+    if (args.homeNodePolicy == "interleave") {
+        homeNode = numa::Node::nodeInterleave();
     }
-    const numa::Node homeNode = *homeNodeIt;
+    else {
+        const auto & numaNodes = numa::NodeList::logicalNodes();
+
+        if (!args.homeNodePolicy.empty()) {
+            const int requestedId = std::stoi(args.homeNodePolicy);
+            if (requestedId < 0) {
+                std::cerr << "Invalid negative home node ID requested: " << requestedId << std::endl;
+                return 1;
+            }
+            const auto it = std::find_if(numaNodes.begin(), numaNodes.end(),
+                [requestedId] (const numa::Node & node)
+                { return node.physicalId() == requestedId; });
+            if (it == numaNodes.end()) {
+                std::cerr << "Requested NUMA node with physical ID "
+                    << requestedId << " is not available." << std::endl;
+                return 1;
+            }
+            homeNode = *it;
+        }
+        else {
+            auto homeNodeIt = std::find_if(numaNodes.begin(), numaNodes.end(), [] (const numa::Node & node) {
+                return node.memorySize() > 0; });
+            if (homeNodeIt == numaNodes.end()) {
+                std::cerr << "No valid NUMA node found." << std::endl;
+                return 1;
+            }
+            homeNode = *homeNodeIt;
+        }
+    }
+
     // By default all memory is allocated on a "home" node.
     const numa::PlaceGuard numaGuard{ homeNode };
-
-    const Args args(argc, argv);
 
     Model model;
     model.visualMode = args.visualMode;
