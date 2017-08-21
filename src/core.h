@@ -45,7 +45,7 @@ struct Body
 
     Body() noexcept {
 #if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
-        // std::iota(inflateBytes.begin(), inflateBytes.end(), char(0));
+        std::fill(inflateBytes.begin(), inflateBytes.end(), char(1));
 #endif
     }
     ~Body() noexcept {}
@@ -55,6 +55,9 @@ struct Body
         : position{ other.position }, force{ other.force }, speed{ other.speed }
         , mass{ other.mass }
     {
+#if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
+        std::copy(other.inflateBytes.begin(), other.inflateBytes.end(), inflateBytes.begin());
+#endif
     }
     Body(Body &&other) noexcept : Body()
     {

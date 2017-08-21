@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <sstream>
 #include <string>
 
@@ -529,7 +530,14 @@ bool Model::updateUnlocked()
         const Node& root = m_nodes[rootIdx];
         #pragma omp parallel for
         for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
-            forceOverNode(rootIdx, invalidNodeIdx, m_bodies[root.bodies()[bodyIdx]], false);
+            Body &body = m_bodies[root.bodies()[bodyIdx]];
+#if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
+            if (BODY_INFLATE_BYTES !=
+                std::accumulate(body.inflateBytes.begin(), body.inflateBytes.end(), size_t(0))) {
+                exit(42);
+            }
+#endif
+            forceOverNode(rootIdx, invalidNodeIdx, body, false);
         }
     }
     #pragma omp parallel for
