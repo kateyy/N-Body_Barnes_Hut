@@ -55,6 +55,7 @@ struct Args
             << "        Line format: position.x y z mass speed.x y z" << std::endl
             << "[-o|-o] outputFileName.xyzmabc - Export bodies after each iteration." << std::endl
             << "[-g|-G] - Generator mode: generate bodies, export to outputFileName and exit." << std::endl
+            << "[-p|-P] - Print sizeof(Body)-sizeof(std::mutex), sizeof(std::mutex), and exit." << std::endl
 #ifdef OPTION_WITH_RENDERING
             << "[-v|-V] 0|1 - Enable visual mode. Default: Enabled." << std::endl;
 #else
@@ -91,6 +92,25 @@ Args::Args(int argc, char **argv)
                 ++n;
             }
             continue;
+        case 'p':
+        case 'P': {
+                const size_t size_bytes = sizeof(Body)-sizeof(std::mutex);
+                double size = size_bytes;
+                int unit = 0;
+                while (size > 1024.0) {
+                    size /= 1024.0;
+                    ++unit;
+                }
+                const std::vector<std::string> units { "bytes", "KB", "MB", "GB", "TB" };
+                std::cout << "sizeof(Body)-sizeof(std::mutex): " << sizeof(Body)-sizeof(std::mutex) << " ";
+                if (unit == 0) {
+                    std::cout << units[0] << std::endl;
+                } else {
+                    std::cout << units[0] << " (" << size_t(size) << " " << units[unit] << ")" << std::endl;
+                }
+                std::cout << "sizeof(std::mutex):              " << sizeof(std::mutex) << std::endl;
+                exit(0);
+            }
         }
 
         if (!value) {

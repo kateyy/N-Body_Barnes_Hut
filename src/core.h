@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <memory>
@@ -41,7 +43,11 @@ struct Body
         swap(lhs.mass, rhs.mass);
     }
 
-    Body() noexcept {}
+    Body() noexcept {
+#if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
+        // std::iota(inflateBytes.begin(), inflateBytes.end(), char(0));
+#endif
+    }
     ~Body() noexcept {}
     Body(const Vec3d &position, const Vec3d &force, const Vec3d &speed, double mass) noexcept
         : position{ position }, force{ force }, speed{ speed }, mass{ mass } {}

@@ -49,6 +49,8 @@ if (OPTION_WITH_PNG_EXPORT)
     find_package(PNG REQUIRED)
 endif()
 
+set(OPTION_BODY_INFLATE_BYTES 0 CACHE STRING "Increase the size of Body instances to fill the CPU caches...")
+set(BODY_INFLATE_BYTES ${OPTION_BODY_INFLATE_BYTES})
 
 if (OPTION_WITH_GPERFTOOLS)
     include(ExternalProject)
