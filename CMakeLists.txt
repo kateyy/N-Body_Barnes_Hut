@@ -48,6 +48,9 @@ endif()
 
 find_package(PGASUS REQUIRED)
 
+set(OPTION_BODY_INFLATE_BYTES 0 CACHE STRING "Increase the size of Body instances to fill the CPU caches...")
+set(BODY_INFLATE_BYTES ${OPTION_BODY_INFLATE_BYTES})
+
 include(cmake/PlatformDetection.cmake)
 
 function(configure_target targetName linkLng)
