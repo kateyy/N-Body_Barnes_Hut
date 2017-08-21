@@ -572,7 +572,14 @@ bool Model::updateUnlocked()
             }
             const size_t numaNodeId = size_t(place);
             auto &bodies = *m_nodeLocalBodies[numaNodeId];
-            forceOverNode(rootIdx, invalidNodeIdx, bodies[root.bodies()[bodyIdx]], false);
+            Body &body = bodies[root.bodies()[bodyIdx]];
+#if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
+            if (BODY_INFLATE_BYTES !=
+                std::accumulate(body.inflateBytes.begin(), body.inflateBytes.end(), size_t(0))) {
+                exit(42);
+            }
+#endif
+            forceOverNode(rootIdx, invalidNodeIdx, body, false);
         }
     }
 
