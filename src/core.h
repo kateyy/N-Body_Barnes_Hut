@@ -58,11 +58,14 @@ struct Body
         swap(*this, other);
         return *this;
     }
+#if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
+    std::array<char, BODY_INFLATE_BYTES> inflateBytes;
+#endif
 };
 
 
 using timepoint_t = std::chrono::time_point<std::chrono::high_resolution_clock>;
-int64_t timeDiffNanonSecs(timepoint_t start, timepoint_t end);
+int64_t timeDiffNanoSecs(timepoint_t start, timepoint_t end);
 
 
 class Node
