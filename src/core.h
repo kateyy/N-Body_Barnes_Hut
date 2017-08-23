@@ -185,6 +185,7 @@ public:
      */
     void benchMode();
     double totalRuntimeSeconds() const { return m_totalRuntimeSecs; }
+    double runtimeFirst3Frames() const { return m_first3FramesTime; }
     
     /** Write current bodies to the outputFileName. */
     bool exportBodies();
@@ -233,6 +234,7 @@ private:
     timepoint_t m_startTime;
     timepoint_t m_endTime;
     double m_totalRuntimeSecs;
+    double m_first3FramesTime;
 
     numa::NodeList m_numaNodes;
     std::vector<std::unique_ptr<std::vector<Body>>> m_nodeLocalBodies;

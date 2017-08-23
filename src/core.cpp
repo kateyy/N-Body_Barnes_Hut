@@ -534,6 +534,10 @@ bool Model::updateUnlocked()
         m_totalRuntimeSecs = timeDiffNanoSecs(m_startTime, m_endTime) * 1e-9;
         return false;
     }
+    if (m_frameCount == 3) {
+        m_first3FramesTime = timeDiffNanoSecs(m_startTime,
+            std::chrono::high_resolution_clock::now()) * 1e-9;
+    }
     m_rootIndices.clear();
 
     /** Build the tree for the current spatial body distribution. */
