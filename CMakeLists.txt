@@ -29,6 +29,8 @@ cmake_dependent_option(OPTION_WITH_PNG_EXPORT
 option(OPTION_PROFILING
     "Setup compile flags for profiling with GPROF (gcc only)." OFF)
 
+option(OPTION_PGASUS_STATIC "Link static version of PGASUS::hpinuma libraries." ON)
+
 find_package(OpenMP REQUIRED)
 find_package(glm QUIET)
 if (NOT glm_FOUND)
@@ -192,7 +194,11 @@ option(OPTION_WITH_BENCHMARK "Add benchmarking target." ON)
 
 add_executable(nbody ${sources})
 configure_target(nbody CXX)
-target_link_libraries(nbody PUBLIC PGASUS::hpinuma_msource)
+set(PGASUS_lib_suffix "")
+if (OPTION_PGASUS_STATIC)
+    set(PGASUS_lib_suffix "_s")
+endif()
+target_link_libraries(nbody PUBLIC PGASUS::hpinuma_msource${PGASUS_lib_suffix})
 
 target_include_directories(nbody PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(nbody SYSTEM PUBLIC ${GLM_INCLUDE_DIR})
@@ -225,7 +231,7 @@ if (OPTION_WITH_BENCHMARK)
     )
     configure_target(nbody_benchmark CXX)
     target_link_libraries(nbody_benchmark PUBLIC
-        PGASUS::hpinuma_msource
+        PGASUS::hpinuma_msource${PGASUS_lib_suffix}
         Boost::filesystem
     )
     target_compile_definitions(nbody_benchmark PRIVATE
