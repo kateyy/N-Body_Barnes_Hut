@@ -28,11 +28,22 @@ using NodeIndex_t = size_t;
  */
 struct Body
 {
+#if BODY_VALUE_STRIDE && BODY_VALUE_STRIDE > 0
+#define PADDING(PREVTYPE, NAME) std::array<char, BODY_VALUE_STRIDE - sizeof(PREVTYPE)> NAME;
+#else
+#define PADDING(PREVTYPE, NAME)
+#endif
+
     Vec3d position;
+    PADDING(Vec3d, padding1)
     Vec3d force;
+    PADDING(Vec3d, padding2)
     Vec3d speed;
+    PADDING(Vec3d, padding3)
     double mass;
+    PADDING(double, padding4)
     std::mutex mutex;
+    PADDING(std::mutex, padding5)
 
     friend void swap(Body &lhs, Body &rhs) noexcept
     {
