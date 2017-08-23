@@ -50,6 +50,10 @@ find_package(PGASUS REQUIRED)
 
 set(OPTION_BODY_INFLATE_BYTES 0 CACHE STRING "Increase the size of Body instances to fill the CPU caches...")
 set(BODY_INFLATE_BYTES ${OPTION_BODY_INFLATE_BYTES})
+set(OPTION_BODY_VALUE_STRIDE 0 CACHE STRING
+    "Add padding between values to force each value to its own cache line.\
+(POWER8: 128 bytes, Intel: 64 bytes)")
+set(BODY_VALUE_STRIDE ${OPTION_BODY_VALUE_STRIDE})
 
 include(cmake/PlatformDetection.cmake)
 

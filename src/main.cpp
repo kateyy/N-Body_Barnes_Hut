@@ -113,6 +113,7 @@ Args::Args(int argc, char **argv)
                     std::cout << units[0] << " (" << size_t(size) << " " << units[unit] << ")" << std::endl;
                 }
                 std::cout << "sizeof(std::mutex):              " << sizeof(std::mutex) << std::endl;
+                std::cout << "sizeof(Body):                    " << sizeof(Body) << std::endl;
                 exit(0);
             }
         }
