@@ -30,7 +30,9 @@ option(OPTION_PROFILING
     "Setup compile flags for profiling with GPROF (gcc only)." OFF)
 
 option(OPTION_WITH_BENCHMARK "Add benchmarking target." ON)
-option(OPTION_WITH_GPERFTOOLS "Use gperftools allocator" ON)
+set(OPTION_ALLOCATOR "std" CACHE STRING
+    "Memory allocator: std (c library's default), tcmalloc (gperftools), or ptmalloc3.")
+set_property(CACHE OPTION_ALLOCATOR PROPERTY STRINGS "std" "tcmalloc" "ptmalloc3")
 
 find_package(OpenMP REQUIRED)
 find_package(glm QUIET)
@@ -56,7 +58,7 @@ set(OPTION_BODY_VALUE_STRIDE 0 CACHE STRING
 (POWER8: 128 bytes, Intel: 64 bytes)")
 set(BODY_VALUE_STRIDE ${OPTION_BODY_VALUE_STRIDE})
 
-if (OPTION_WITH_GPERFTOOLS)
+if (OPTION_ALLOCATOR STREQUAL "tcmalloc")
     include(ExternalProject)
 
     ExternalProject_Add(
@@ -71,6 +73,9 @@ if (OPTION_WITH_GPERFTOOLS)
         BUILD_COMMAND
             make -j8
     )
+
+elseif(OPTION_ALLOCATOR STREQUAL "ptmalloc3")
+    add_subdirectory(3rdParty/ptmalloc3)
 endif()
 
 include(cmake/PlatformDetection.cmake)
@@ -100,12 +105,14 @@ function(configure_target targetName linkLng)
 
             -ffast-math
         )
-        if (OPTION_WITH_GPERFTOOLS)
+        if (OPTION_ALLOCATOR STREQUAL "tcmalloc")
             target_link_libraries(${targetName} PUBLIC
                 -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
                 optimized "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal.so"
                 debug "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal_debug.so"
             )
+        elseif(OPTION_ALLOCATOR STREQUAL "ptmalloc3")
+            target_link_libraries(${targetName} PUBLIC ptmalloc3)
         endif()
         if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.8)
             set(OPTION_CLANG_DEBUGGER lldb CACHE STRING
@@ -138,12 +145,14 @@ function(configure_target targetName linkLng)
             _GLIBCXX_USE_CXX11_ABI
             $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
         )
-        if (OPTION_WITH_GPERFTOOLS)
+        if (OPTION_ALLOCATOR STREQUAL "tcmalloc")
             target_link_libraries(${targetName} PUBLIC
                 -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
                 optimized "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal.so"
                 debug "${CMAKE_CURRENT_BINARY_DIR}/3rdParty/gperftools/lib/libtcmalloc_minimal_debug.so"
             )
+        elseif(OPTION_ALLOCATOR STREQUAL "ptmalloc3")
+            target_link_libraries(${targetName} PUBLIC ptmalloc3)
         endif()
         if (PGASUS_PLATFORM_PPC64LE)
             # See https://www.ibm.com/developerworks/community/wikis/home?lang=en#!/wiki/W51a7ffcf4dfd_4b40_9d82_446ebc23c550/page/IBM%20Advance%20Toolchain%20for%20PowerLinux%20Documentation?section=optimization
