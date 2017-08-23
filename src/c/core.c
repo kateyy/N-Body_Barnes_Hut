@@ -440,7 +440,7 @@ init(void)
             &bodies[i].speed.x, &bodies[i].speed.y, &bodies[i].speed.z)) {
             ++i;
             if (i >= bodiesQuantity) {
-                fprintf(stderr, "Successfully read %i bodies\n", i);
+                // fprintf(stderr, "Successfully read %i bodies\n", i);
                 return;
             }
             bodies[i].force.x = 0;
@@ -523,5 +523,5 @@ void benchMode() {
     time_t end = clock();
     float seconds = (float)(end - start) / CLOCKS_PER_SEC;
 #endif
-    fprintf(stderr, "Runtime: %f\n", seconds);
+    fprintf(stderr, "%f\n", seconds);
 }
