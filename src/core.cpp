@@ -503,8 +503,11 @@ bool Model::updateUnlocked()
     if (m_frameLimit > 0 && m_frameCount == m_frameLimit) {
         m_endTime = std::chrono::high_resolution_clock::now();
         m_totalRuntimeSecs = timeDiffNanoSecs(m_startTime, m_endTime) * 1e-9;
-        printf("%f\n", m_totalRuntimeSecs);
         return false;
+    }
+    if (m_frameCount == 3) {
+        m_first3FramesTime = timeDiffNanoSecs(m_startTime,
+            std::chrono::high_resolution_clock::now()) * 1e-9;
     }
     m_rootIndices.clear();
 
