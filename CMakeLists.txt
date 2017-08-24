@@ -40,6 +40,8 @@ dynamic memory allocations." OFF)
 set(CENTER_OF_MASS_IS_BODY ${OPTION_CENTER_OF_MASS_IS_BODY})
 option(OPTION_LESS_DYNAMIC_ALLOCS "Reduce potential dynamic allocations in Node reset etc." ON)
 set(LESS_DYNAMIC_ALLOCS ${OPTION_LESS_DYNAMIC_ALLOCS})
+option(OPTION_PERSISTENT_NODE_VECTOR "Prevent dynamic allocations in node vector." ON)
+set(PERSISTENT_NODE_VECTOR ${OPTION_PERSISTENT_NODE_VECTOR})
 
 find_package(OpenMP REQUIRED)
 find_package(glm QUIET)

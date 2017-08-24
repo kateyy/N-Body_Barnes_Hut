@@ -14,6 +14,10 @@
 
 #include "config.h"
 
+#ifdef PERSISTENT_NODE_VECTOR
+#include "PersistentVector.hpp"
+#endif
+
 using Vec3d = glm::tvec3<double>;
 
 
@@ -101,6 +105,20 @@ public:
     Node& operator=(Node other);
     friend void swap(Node &lhs, Node &rhs);
 
+#ifdef PERSISTENT_NODE_VECTOR
+    // Special weak initialization function for PersistentVector, assuming that
+    // reset() or the constructor was called before.
+    void initializeValues(NodeIndex_t up,
+        double sx, double sy, double sz,
+        double ex, double ey, double ez,
+        int depth) {
+        this->UP = up;
+        this->start = { sx, sy, sz };
+        this->end = { ex, ey, ez };
+        this->depth = depth;
+    }
+#endif
+
     void reset();
     /** Reset neighborhood, preserve bodies, start and end. */
     void resetNeighborhood();
@@ -164,9 +182,18 @@ public:
     void pause(bool doPause = true);
     void stopAndWait();
 
+#ifdef PERSISTENT_NODE_VECTOR
+    using NodeVector = PersistentVector<Node,
+        void(Node::*)(NodeIndex_t, double, double, double, double, double, double, int),
+        &Node::initializeValues,
+        &Node::reset>;
+#else
+    using NodeVector = std::vector<Node>;
+#endif
+
     struct LockedData
     {
-        LockedData(const std::vector<Body> &bodies, const std::vector<Node> &nodes, std::mutex & mutex)
+        LockedData(const std::vector<Body> &bodies, const NodeVector &nodes, std::mutex & mutex)
             : bodies{ bodies }
             , nodes{ nodes }
             , lock{ mutex }
@@ -174,7 +201,7 @@ public:
         }
         LockedData(LockedData &&) = default;
         const std::vector<Body> &bodies;
-        const std::vector<Node> &nodes;
+        const NodeVector &nodes;
     private:
         std::unique_lock<std::mutex> lock;
     };
@@ -228,7 +255,7 @@ private:
     std::mutex m_dataMutex;
     std::unique_lock<std::mutex> m_pauseLock;
     bool m_stopRequested;
-    std::vector<Node> m_nodes;
+    NodeVector m_nodes;
     std::vector<NodeIndex_t> m_rootIndices;
     std::vector<Body> m_bodies;
     std::FILE * m_outputPositions_f;
