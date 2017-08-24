@@ -190,10 +190,10 @@ void Node::reset()
     end = { 0.0, 0.0, 0.0 };
     m_bodyIndices.clear();
 #else
-    // Nice code, but potentially includes dynamic allocations
-    Node null;
+    // Nice code, but includes dynamic allocations.
     // m_bodyIndices is completely cleared here, so that it will reallocate
     // in each simulation step.
+    Node null;
     swap(*this, null);
 #endif
 }

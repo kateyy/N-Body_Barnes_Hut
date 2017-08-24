@@ -28,3 +28,4 @@ constexpr bool PRINT_TIMINGS = false;
 #cmakedefine BODY_VALUE_STRIDE @BODY_VALUE_STRIDE@u
 #cmakedefine CENTER_OF_MASS_IS_BODY
 #cmakedefine LESS_DYNAMIC_ALLOCS
+#cmakedefine PERSISTENT_NODE_VECTOR
