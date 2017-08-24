@@ -34,6 +34,13 @@ set(OPTION_ALLOCATOR "std" CACHE STRING
     "Memory allocator: std (c library's default), tcmalloc (gperftools), or ptmalloc3.")
 set_property(CACHE OPTION_ALLOCATOR PROPERTY STRINGS "std" "tcmalloc" "ptmalloc3")
 
+option(OPTION_CENTER_OF_MASS_IS_BODY "Use Body class for Node::m_centerOfMass. \
+This introduces some overhead, which can be used to measure the impact of occasional \
+dynamic memory allocations." OFF)
+set(CENTER_OF_MASS_IS_BODY ${OPTION_CENTER_OF_MASS_IS_BODY})
+option(OPTION_LESS_DYNAMIC_ALLOCS "Reduce potential dynamic allocations in Node reset etc." ON)
+set(LESS_DYNAMIC_ALLOCS ${OPTION_LESS_DYNAMIC_ALLOCS})
+
 find_package(OpenMP REQUIRED)
 find_package(glm QUIET)
 if (NOT glm_FOUND)
