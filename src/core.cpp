@@ -184,17 +184,33 @@ void swap(Node &lhs, Node &rhs)
 
 void Node::reset()
 {
+#ifdef LESS_DYNAMIC_ALLOCS
+    resetNeighborhood();
+    start = { 0.0, 0.0, 0.0 };
+    end = { 0.0, 0.0, 0.0 };
+    m_bodyIndices.clear();
+#else
+    // Nice code, but potentially includes dynamic allocations
     Node null;
+    // m_bodyIndices is completely cleared here, so that it will reallocate
+    // in each simulation step.
     swap(*this, null);
+#endif
 }
 
 void Node::resetNeighborhood()
 {
+#ifdef LESS_DYNAMIC_ALLOCS
+    depth = -1;
+    UNE = UNW = USE = USW = DNE = DNW = DSE = DSW = UP = invalidNodeIdx;
+    m_centerOfMass = CenterOfMass{};
+#else
     Node null;
     null.start = start;
     null.end = end;
     null.m_bodyIndices = std::move(m_bodyIndices);
     swap(*this, null);
+#endif
 }
 
 Model::Model()

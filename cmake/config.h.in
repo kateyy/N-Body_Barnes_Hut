@@ -26,3 +26,5 @@ constexpr bool PRINT_TIMINGS = false;
 #cmakedefine PGASUS_WITH_POLICIES
 #cmakedefine BODY_INFLATE_BYTES @OPTION_BODY_INFLATE_BYTES@ull
 #cmakedefine BODY_VALUE_STRIDE @BODY_VALUE_STRIDE@u
+#cmakedefine CENTER_OF_MASS_IS_BODY
+#cmakedefine LESS_DYNAMIC_ALLOCS

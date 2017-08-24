@@ -109,7 +109,6 @@ public:
     void addBody(BodyIndex_t index) { m_bodyIndices.push_back(index); }
     const std::vector<BodyIndex_t>& bodies() const { return m_bodyIndices; }
     size_t bodies_quantity() const { return m_bodyIndices.size(); }
-    const Body& centerOfMass() const { return m_centerOfMass; };
     void updateCenterOfMass(const std::vector<Body> &allBodies);
 
     bool applyForceTo(Body &body) const;
@@ -128,8 +127,18 @@ public:
     NodeIndex_t UP;
 
 private:
+#ifdef CENTER_OF_MASS_IS_BODY
+    using CenterOfMass = Body;
+#else
+    struct CenterOfMass {
+        Vec3d position;
+        double mass;
+    };
+#endif
+
+private:
     std::vector<BodyIndex_t> m_bodyIndices;
-    Body m_centerOfMass;
+    CenterOfMass m_centerOfMass;
 };
 
 
