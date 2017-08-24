@@ -30,6 +30,9 @@ option(OPTION_PROFILING
     "Setup compile flags for profiling with GPROF (gcc only)." OFF)
 
 option(OPTION_PGASUS_STATIC "Link static version of PGASUS::hpinuma libraries." ON)
+option(OPTION_PGASUS_WITH_POLICIES "Assume PGASUS supports NUMA node policies.\
+This requires the slightly hacked interleave etc. policy branch of PGASUS." OFF)
+set(PGASUS_WITH_POLICIES ${OPTION_PGASUS_WITH_POLICIES})
 
 find_package(OpenMP REQUIRED)
 find_package(glm QUIET)

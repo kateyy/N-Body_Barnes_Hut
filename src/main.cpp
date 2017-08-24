@@ -48,7 +48,9 @@ struct Args
     std::string inputFileName;
     std::string outputFileName;
     bool generatorMode = false;
+#ifdef PGASUS_WITH_POLICIES
     std::string homeNodePolicy;
+#endif
 
     void printHelp() {
         std::cerr << "Usage:" << std::endl
@@ -65,8 +67,13 @@ struct Args
 #else
             << "[-v|-V] 0|1 - Enable visual mode. NOT AVAILBLE IN THE CURRENT BUILD." << std::endl
 #endif
+#ifdef PGASUS_WITH_POLICIES
             << "[-p|-P] policyOrNodeId - Provide an ID of NUMA node used as home node "
-                << "or set a policy (currently supported: \"interleave\")" << std::endl;
+                << "or set a policy (currently supported: \"interleave\")" << std::endl
+#else
+            << "[-p|-P] PGASUS policy. NOT AVAILBLE IN THE CURRENT BUILD." << std::endl
+#endif
+            << "[-s|-S] - Print sizeof(Body)-sizeof(std::mutex), sizeof(std::mutex), and exit." << std::endl;
     }
 };
 
@@ -98,6 +105,26 @@ Args::Args(int argc, char **argv)
                 ++n;
             }
             continue;
+        case 's':
+        case 'S': {
+                const size_t size_bytes = sizeof(Body)-sizeof(std::mutex);
+                double size = size_bytes;
+                int unit = 0;
+                while (size > 1024.0) {
+                    size /= 1024.0;
+                    ++unit;
+                }
+                const std::vector<std::string> units { "bytes", "KB", "MB", "GB", "TB" };
+                std::cout << "sizeof(Body)-sizeof(std::mutex): " << sizeof(Body)-sizeof(std::mutex) << " ";
+                if (unit == 0) {
+                    std::cout << units[0] << std::endl;
+                } else {
+                    std::cout << units[0] << " (" << size_t(size) << " " << units[unit] << ")" << std::endl;
+                }
+                std::cout << "sizeof(std::mutex):              " << sizeof(std::mutex) << std::endl;
+                std::cout << "sizeof(Body):                    " << sizeof(Body) << std::endl;
+                exit(0);
+            }
         }
 
         if (!value) {
@@ -126,10 +153,12 @@ Args::Args(int argc, char **argv)
         case 'V':
             visualMode = std::atoi(value) != 0;
             break;
+#ifdef PGASUS_WITH_POLICIES
         case 'p':
         case 'P':
             homeNodePolicy = value;
             break;
+#endif
         default:
             std::cerr << "Invalid option: " << option << std::endl;
             printHelp();
@@ -145,18 +174,18 @@ int main(int argc, char **argv)
 
     numa::Node homeNode;
 
+#ifdef PGASUS_WITH_POLICIES
     if (args.homeNodePolicy == "interleave") {
         homeNode = numa::Node::nodeInterleave();
     }
     else {
-        const auto & numaNodes = numa::NodeList::logicalNodes();
-
         if (!args.homeNodePolicy.empty()) {
             const int requestedId = std::stoi(args.homeNodePolicy);
             if (requestedId < 0) {
                 std::cerr << "Invalid negative home node ID requested: " << requestedId << std::endl;
                 return 1;
             }
+            const auto & numaNodes = numa::NodeList::logicalNodes();
             const auto it = std::find_if(numaNodes.begin(), numaNodes.end(),
                 [requestedId] (const numa::Node & node)
                 { return node.physicalId() == requestedId; });
@@ -167,7 +196,12 @@ int main(int argc, char **argv)
             }
             homeNode = *it;
         }
-        else {
+        else
+#else   // no PGASUS policy support/nothing specified: just grab the first available node
+    {
+#endif
+        {
+            const auto & numaNodes = numa::NodeList::logicalNodes();
             auto homeNodeIt = std::find_if(numaNodes.begin(), numaNodes.end(), [] (const numa::Node & node) {
                 return node.memorySize() > 0; });
             if (homeNodeIt == numaNodes.end()) {
