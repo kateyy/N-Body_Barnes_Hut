@@ -524,8 +524,8 @@ bool Renderer::drawScene_mem()
     if (PRINT_TIMINGS)
     {
         const auto endTime = std::chrono::high_resolution_clock::now();
-        const auto syncTimeNS = timeDiffNanonSecs(waitModelStartTime, waitModelEndTime);
-        const auto renderTimeNS = timeDiffNanonSecs(startTime, endTime) - syncTimeNS;
+        const auto syncTimeNS = timeDiffNanoSecs(waitModelStartTime, waitModelEndTime);
+        const auto renderTimeNS = timeDiffNanoSecs(startTime, endTime) - syncTimeNS;
         std::cout << "Render time:  " << std::setw(11) << renderTimeNS / 1000
             << "micro seconds, model sync time: " << syncTimeNS << "micro seconds" << std::endl;
     }
