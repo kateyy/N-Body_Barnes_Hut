@@ -577,30 +577,41 @@ bool Model::updateUnlocked()
         std::copy_n(m_bodies.begin(), m_bodies.size(), nodeLocal->begin());
     }
 
-#pragma omp parallel for
-    for (size_t ri = 0; ri < m_rootIndices.size(); ++ri) {
-        const NodeIndex_t rootIdx = m_rootIndices[ri];
-        const Node& root = m_nodes[rootIdx];
-#pragma omp parallel for
-        for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
-            const int place = numa::util::Topology::get()->curr_numa_node()->id;
-            assert(numa::Node::curr().valid());
-            assert(numa::Node::curr().physicalId() == place);
-            if (place < 0 || size_t(place) >= m_numaNodes.size()) {
-                std::cerr << "invalid thread place in nested OpenMP parallel region!" << std::endl;
-                exit(42);
-            }
-            const size_t numaNodeId = size_t(place);
-            auto &bodies = *m_nodeLocalBodies[numaNodeId];
-            Body &body = bodies[root.bodies()[bodyIdx]];
-#if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
-            if (BODY_INFLATE_BYTES !=
-                std::accumulate(body.inflateBytes.begin(), body.inflateBytes.end(), size_t(0))) {
-                exit(42);
-            }
-#endif
-            forceOverNode(rootIdx, invalidNodeIdx, body, false);
+    struct ThreadInfo {
+        ThreadInfo(std::vector<std::unique_ptr<std::vector<Body>>> & bodies)
+            : numaNodeId{ -1 }
+            , nodeLocalBodies{ nullptr }
+            , m_nodeLocalBodies{ bodies }
+        {}
+        ThreadInfo(const ThreadInfo & other)
+            : numaNodeId{ numa::Node::curr().logicalId() }
+            , nodeLocalBodies{ nullptr }
+            , m_nodeLocalBodies{ other.m_nodeLocalBodies }
+        {
+            assert(numaNodeId >= 0 && size_t(numaNodeId) < m_nodeLocalBodies.size());
+            nodeLocalBodies = m_nodeLocalBodies[numaNodeId].get();
         }
+        int numaNodeId;
+        std::vector<Body> * nodeLocalBodies;
+    private:
+        std::vector<std::unique_ptr<std::vector<Body>>> & m_nodeLocalBodies;
+    };
+    ThreadInfo tInfo{ m_nodeLocalBodies };
+
+#pragma omp parallel for firstprivate(tInfo)
+    for (size_t ri = 0; ri < m_rootIndices.size(); ++ri) {
+        assert(tInfo.numaNodeId == numa::Node::curr().logicalId());
+        const size_t rootIdx = m_rootIndices[ri];
+        auto &bodies = *tInfo.nodeLocalBodies;
+        assert(m_nodes[rootIdx].bodies().size() == 1);
+        Body &body = bodies[m_nodes[rootIdx].bodies().front()];
+#if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
+        if (BODY_INFLATE_BYTES !=
+            std::accumulate(body.inflateBytes.begin(), body.inflateBytes.end(), size_t(0))) {
+            exit(42);
+        }
+#endif
+        forceOverNode(rootIdx, invalidNodeIdx, body, false);
     }
 
     // accumulate node local results
