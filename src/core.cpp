@@ -547,17 +547,15 @@ bool Model::updateUnlocked()
     for (ptrdiff_t ri = 0; ri < static_cast<ptrdiff_t>(m_rootIndices.size()); ++ri) {
         const NodeIndex_t rootIdx = m_rootIndices[ri];
         const Node& root = m_nodes[rootIdx];
-        #pragma omp parallel for
-        for (ptrdiff_t bodyIdx = 0; bodyIdx < static_cast<ptrdiff_t>(root.bodies().size()); ++bodyIdx) {
-            Body &body = m_bodies[root.bodies()[bodyIdx]];
+        assert(root.bodies().size() == 1);
+        Body &body = m_bodies[root.bodies().front()];
 #if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
-            if (BODY_INFLATE_BYTES !=
-                std::accumulate(body.inflateBytes.begin(), body.inflateBytes.end(), size_t(0))) {
-                exit(42);
-            }
-#endif
-            forceOverNode(rootIdx, invalidNodeIdx, body, false);
+        if (BODY_INFLATE_BYTES !=
+            std::accumulate(body.inflateBytes.begin(), body.inflateBytes.end(), size_t(0))) {
+            exit(42);
         }
+#endif
+        forceOverNode(rootIdx, invalidNodeIdx, body, false);
     }
     #pragma omp parallel for
     for (ptrdiff_t i = 0; i < ptrdiff_t(m_bodies.size()); i++) {
