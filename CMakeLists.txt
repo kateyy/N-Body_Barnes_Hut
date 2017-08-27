@@ -31,8 +31,8 @@ option(OPTION_PROFILING
 
 option(OPTION_WITH_BENCHMARK "Add benchmarking target." ON)
 set(OPTION_ALLOCATOR "std" CACHE STRING
-    "Memory allocator: std (c library's default), tcmalloc (gperftools), or ptmalloc3.")
-set_property(CACHE OPTION_ALLOCATOR PROPERTY STRINGS "std" "tcmalloc" "ptmalloc3")
+    "Memory allocator: std (c library's default), tcmalloc (gperftools), ptmalloc3, or PGASUS (allocator only).")
+set_property(CACHE OPTION_ALLOCATOR PROPERTY STRINGS "std" "tcmalloc" "ptmalloc3" "PGASUS")
 
 option(OPTION_CENTER_OF_MASS_IS_BODY "Use Body class for Node::m_centerOfMass. \
 This introduces some overhead, which can be used to measure the impact of occasional \
@@ -85,6 +85,10 @@ if (OPTION_ALLOCATOR STREQUAL "tcmalloc")
 
 elseif(OPTION_ALLOCATOR STREQUAL "ptmalloc3")
     add_subdirectory(3rdParty/ptmalloc3)
+
+elseif(OPTION_ALLOCATOR STREQUAL "PGASUS")
+    find_package(PGASUS REQUIRED)
+
 endif()
 
 include(cmake/PlatformDetection.cmake)
@@ -122,6 +126,8 @@ function(configure_target targetName linkLng)
             )
         elseif(OPTION_ALLOCATOR STREQUAL "ptmalloc3")
             target_link_libraries(${targetName} PUBLIC ptmalloc3)
+        elseif(OPTION_ALLOCATOR STREQUAL "PGASUS")
+            target_link_libraries(${targetName} PUBLIC PGASUS::hpinuma_msource)
         endif()
         if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.8)
             set(OPTION_CLANG_DEBUGGER lldb CACHE STRING
@@ -162,6 +168,8 @@ function(configure_target targetName linkLng)
             )
         elseif(OPTION_ALLOCATOR STREQUAL "ptmalloc3")
             target_link_libraries(${targetName} PUBLIC ptmalloc3)
+        elseif(OPTION_ALLOCATOR STREQUAL "PGASUS")
+            target_link_libraries(${targetName} PUBLIC PGASUS::hpinuma_msource)
         endif()
         if (PGASUS_PLATFORM_PPC64LE)
             # See https://www.ibm.com/developerworks/community/wikis/home?lang=en#!/wiki/W51a7ffcf4dfd_4b40_9d82_446ebc23c550/page/IBM%20Advance%20Toolchain%20for%20PowerLinux%20Documentation?section=optimization
