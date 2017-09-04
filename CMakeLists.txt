@@ -128,7 +128,7 @@ function(configure_target targetName linkLng)
             -ffast-math
         )
         target_compile_definitions(${targetName} PUBLIC
-            _GLIBCXX_USE_CXX11_ABI
+            _GLIBCXX_USE_CXX11_ABI=1
             $<$<CONFIG:Debug>:_GLIBCXX_DEBUG>
         )
         if (PGASUS_PLATFORM_PPC64LE)
