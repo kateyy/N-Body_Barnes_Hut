@@ -34,6 +34,12 @@ option(OPTION_PGASUS_WITH_POLICIES "Assume PGASUS supports NUMA node policies.\
 This requires the slightly hacked interleave etc. policy branch of PGASUS." OFF)
 set(PGASUS_WITH_POLICIES ${OPTION_PGASUS_WITH_POLICIES})
 
+set(OPTION_THREADING_IMPL OpenMP CACHE STRING
+    "How to parallelize the implementation? OpenMP, PGASUS_async, or PGASUS_forEach")
+set_property(CACHE OPTION_THREADING_IMPL PROPERTY STRINGS
+    OpenMP PGASUS_async PGASUS_forEach)
+set(THREADING_IMPL "THREADING_${OPTION_THREADING_IMPL}")
+
 option(OPTION_CENTER_OF_MASS_IS_BODY "Use Body class for Node::m_centerOfMass. \
 This introduces some overhead, which can be used to measure the impact of occasional \
 dynamic memory allocations." OFF)
@@ -210,7 +216,12 @@ set(PGASUS_lib_suffix "")
 if (OPTION_PGASUS_STATIC)
     set(PGASUS_lib_suffix "_s")
 endif()
-target_link_libraries(nbody PUBLIC PGASUS::hpinuma_msource${PGASUS_lib_suffix})
+if (OPTION_THREADING_IMPL STREQUAL "OpenMP")
+    set(PGASUS_lib PGASUS::hpinuma_msource)
+else()
+    set(PGASUS_lib PGASUS::hpinuma)
+endif()
+target_link_libraries(nbody PUBLIC ${PGASUS_lib}${PGASUS_lib_suffix})
 
 target_include_directories(nbody PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(nbody SYSTEM PUBLIC ${GLM_INCLUDE_DIR})

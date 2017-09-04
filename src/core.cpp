@@ -30,6 +30,10 @@
 
 #include "core.h"
 
+#if OPTION_THREADING_IMPL == THREADING_PGASUS_async
+#include <PGASUS/tasking/tasking.hpp>
+#endif
+
 using namespace config;
 
 namespace
@@ -220,6 +224,7 @@ Model::Model()
     , m_outputPositions_f{ nullptr }
     , m_frameLimit{ 0 }
     , m_frameCount{ 0 }
+    , m_totalThreadCount{ 0 }
 {
 }
 
@@ -475,9 +480,11 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 
 
     // Initialize parallel/NUMA worker environment
+    m_totalThreadCount = 0;
     for (const numa::Node &node : numa::NodeList::logicalNodesWithCPUs()) {
         if (node.memorySize() > 0) {
             m_numaNodes.push_back(node);
+            m_totalThreadCount += node.threadCount();
         }
     }
 
@@ -577,6 +584,7 @@ bool Model::updateUnlocked()
         std::copy_n(m_bodies.begin(), m_bodies.size(), nodeLocal->begin());
     }
 
+#if OPTION_THREADING_IMPL == THREADING_OpenMP
     struct ThreadInfo {
         ThreadInfo(std::vector<std::unique_ptr<std::vector<Body>>> & bodies)
             : numaNodeId{ -1 }
@@ -613,6 +621,45 @@ bool Model::updateUnlocked()
 #endif
         forceOverNode(rootIdx, invalidNodeIdx, body, false);
     }
+
+#elif OPTION_THREADING_IMPL == THREADING_PGASUS_async
+    auto loopFunc = [this] (size_t startIdx, size_t endIdx, size_t numaNodeId) {
+        assert(int(numaNodeId) == numa::Node::curr().logicalId());
+        auto &bodies = *m_nodeLocalBodies[numaNodeId];
+        for (size_t ri = startIdx; ri < endIdx; ++ri) {
+            const size_t rootIdx = m_rootIndices[ri];
+            assert(m_nodes[rootIdx].bodies().size() == 1);
+            Body &body = bodies[m_nodes[rootIdx].bodies().front()];
+    #if defined(BODY_INFLATE_BYTES) && BODY_INFLATE_BYTES > 0
+            if (BODY_INFLATE_BYTES !=
+                std::accumulate(body.inflateBytes.begin(), body.inflateBytes.end(), size_t(0))) {
+                exit(42);
+            }
+    #endif
+            forceOverNode(rootIdx, invalidNodeIdx, body, false);
+        }
+    };
+    const size_t numTasks = m_rootIndices.size();
+    const size_t tasksPerThread = size_t(std::ceil(numTasks
+        / float(m_totalThreadCount)));
+    size_t startIdx = 0;
+    std::list<numa::TriggerableRef> waitList;
+    for (size_t numaNodeId = 0; numaNodeId < m_numaNodes.size(); ++numaNodeId) {
+        const numa::Node &numaNode = m_numaNodes[numaNodeId];
+        for (size_t localThreadId = 0; localThreadId < numaNode.threadCount(); ++localThreadId) {
+            const size_t endIdx = std::min(startIdx + tasksPerThread, numTasks);
+            waitList.push_back(numa::async<void>(
+                std::bind(loopFunc, startIdx, endIdx, numaNodeId),
+                0,
+                numaNode));
+            startIdx = endIdx;
+        }
+    }
+    numa::wait(waitList);
+
+#else
+#error "Selected threading type is not implemented."
+#endif
 
     // accumulate node local results
     for (auto &body : m_bodies) {

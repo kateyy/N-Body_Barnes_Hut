@@ -273,5 +273,6 @@ private:
     double m_first3FramesTime;
 
     numa::NodeList m_numaNodes;
+    size_t m_totalThreadCount;
     std::vector<std::unique_ptr<std::vector<Body>>> m_nodeLocalBodies;
 };
