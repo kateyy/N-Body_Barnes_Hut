@@ -221,7 +221,7 @@ public:
      */
     void benchMode();
     double totalRuntimeSeconds() const { return m_totalRuntimeSecs; }
-    double runtimeFirst3Frames() const { return m_first3FramesTime; }
+    double runtimeFirstNFrames() const { return m_excludeNFramesTime; }
     
     /** Write current bodies to the outputFileName. */
     bool exportBodies();
@@ -270,7 +270,7 @@ private:
     timepoint_t m_startTime;
     timepoint_t m_endTime;
     double m_totalRuntimeSecs;
-    double m_first3FramesTime;
+    double m_excludeNFramesTime;
 
     numa::NodeList m_numaNodes;
     size_t m_totalThreadCount;

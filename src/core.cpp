@@ -121,6 +121,11 @@ bool initializeBodies(std::vector<Body> &bodies, std::string scheme)
 
 }
 
+double timeDiffSecs(timepoint_t start, timepoint_t end)
+{
+    return timeDiffNanoSecs(start, end) * 1e-9;
+}
+
 int64_t timeDiffNanoSecs(timepoint_t start, timepoint_t end)
 {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
@@ -420,6 +425,9 @@ void Model::forceOverNode(NodeIndex_t nodeIdx, NodeIndex_t downIdx, Body &body, 
 
 bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 {
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_start = std::chrono::high_resolution_clock::now();
+#endif
     m_frameCount = 0;
     if (!outputFileName.empty()) {
         m_outputPositions_f = std::fopen(outputFileName.c_str(), "wb");
@@ -498,6 +506,12 @@ bool Model::init(const std::string& bodiesInitScheme, const size_t numBodies)
 
     m_startTime = std::chrono::high_resolution_clock::now();
 
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_done = std::chrono::high_resolution_clock::now();
+    std::cerr << "Model setup time: " << timeDiffSecs(time_start, time_done)
+        << " seconds" << std::endl;
+#endif
+
     return true;
 }
 
@@ -550,18 +564,39 @@ bool Model::update()
 
 bool Model::updateUnlocked()
 {
-    const auto startTime = std::chrono::high_resolution_clock::now();
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    static double t_treeSetup = 0.0;
+    static double t_updateCentersOfMass = 0.0;
+    static double t_scatter = 0.0;
+    static double t_forceCompute = 0.0;
+    static double t_gather = 0.0;
+    static double t_applyForces = 0.0;
+#endif
 
     if (m_frameLimit > 0 && m_frameCount == m_frameLimit) {
         m_endTime = std::chrono::high_resolution_clock::now();
-        m_totalRuntimeSecs = timeDiffNanoSecs(m_startTime, m_endTime) * 1e-9;
+        m_totalRuntimeSecs = timeDiffSecs(m_startTime, m_endTime);
+
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+        std::cerr << "Timings per operations: " << std::endl;
+        std::cerr << "treeSetup;" << t_treeSetup << std::endl;
+        std::cerr << "updateCentersOfMass;" << t_updateCentersOfMass << std::endl;
+        std::cerr << "scatter;" << t_scatter << std::endl;
+        std::cerr << "forceComputation;" << t_forceCompute << std::endl;
+        std::cerr << "gather;" << t_gather << std::endl;
+        std::cerr << "applyForces;" << t_applyForces << std::endl;
+#endif
         return false;
     }
-    if (m_frameCount == 3) {
-        m_first3FramesTime = timeDiffNanoSecs(m_startTime,
-            std::chrono::high_resolution_clock::now()) * 1e-9;
+    if (m_frameCount == OPTION_TIMING_EXCLUDE_FRAMES) {
+        m_excludeNFramesTime = timeDiffSecs(m_startTime, std::chrono::high_resolution_clock::now());
     }
     m_rootIndices.clear();
+
+
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_treeSetup = std::chrono::high_resolution_clock::now();
+#endif
 
     /** Build the tree for the current spatial body distribution. */
     resetNodes();
@@ -574,15 +609,26 @@ bool Model::updateUnlocked()
      * loop. The new state is written to the m_bodies in the second loop (with its nested loops).
      */
 
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_updateCentersOfMass = std::chrono::high_resolution_clock::now();
+#endif
     #pragma omp parallel for
     for (ptrdiff_t i = 0; i < static_cast<ptrdiff_t>(m_nodes.size()); ++i) {
         m_nodes[i].updateCenterOfMass(m_bodies);
     }
 
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_scatter = std::chrono::high_resolution_clock::now();
+#endif
+
     // Copy current bodies to node storage.
     for (auto &nodeLocal : m_nodeLocalBodies) {
         std::copy_n(m_bodies.begin(), m_bodies.size(), nodeLocal->begin());
     }
+
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_forceCompute = std::chrono::high_resolution_clock::now();
+#endif
 
 #if OPTION_THREADING_IMPL == THREADING_OpenMP
     struct ThreadInfo {
@@ -683,6 +729,10 @@ bool Model::updateUnlocked()
 #error "Selected threading type is not implemented."
 #endif
 
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_gather = std::chrono::high_resolution_clock::now();
+#endif
+
     // accumulate node local results
     for (auto &body : m_bodies) {
         body.force = {0, 0, 0};
@@ -693,6 +743,10 @@ bool Model::updateUnlocked()
         }
     }
 
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_applyForces = std::chrono::high_resolution_clock::now();
+#endif
+
     #pragma omp parallel for
     for (ptrdiff_t i = 0; i < ptrdiff_t(m_bodies.size()); i++) {
         Body& body = m_bodies[i];
@@ -700,14 +754,22 @@ bool Model::updateUnlocked()
         body.position += body.speed * 50E12;
         body.force = { 0, 0, 0 };
     }
+
+#ifdef OPTION_MEASURE_OPERATION_TIMINGS
+    const auto time_done = std::chrono::high_resolution_clock::now();
+
+    if (m_frameCount >= OPTION_TIMING_EXCLUDE_FRAMES) {
+        t_treeSetup += timeDiffSecs(time_treeSetup, time_updateCentersOfMass);
+        t_updateCentersOfMass += timeDiffSecs(time_updateCentersOfMass, time_scatter);
+        t_scatter += timeDiffSecs(time_scatter, time_forceCompute);
+        t_forceCompute += timeDiffSecs(time_forceCompute, time_gather);
+        t_gather += timeDiffSecs(time_gather, time_applyForces);
+        t_applyForces += timeDiffSecs(time_applyForces, time_done);
+    }
+#endif
+
     exportBodies();
     m_frameCount++;
-    if (PRINT_TIMINGS)
-    {
-        const auto endTime = std::chrono::high_resolution_clock::now();
-        std::cout << "Compute time: " << std::setw(11) << timeDiffNanoSecs(startTime, endTime) / 1000
-            << "micro seconds, Frame: " << m_frameCount << std::endl;
-    }
     return true;
 }
 

@@ -34,6 +34,10 @@ option(OPTION_PGASUS_WITH_POLICIES "Assume PGASUS supports NUMA node policies.\
 This requires the slightly hacked interleave etc. policy branch of PGASUS." OFF)
 set(PGASUS_WITH_POLICIES ${OPTION_PGASUS_WITH_POLICIES})
 
+set(OPTION_TIMING_EXCLUDE_FRAMES "10" CACHE STRING
+    "Exclude first N frames from time measurement (total time is also printed).")
+option(OPTION_MEASURE_OPERATION_TIMINGS "Output timings per operation" OFF)
+
 set(OPTION_THREADING_IMPL OpenMP CACHE STRING
     "How to parallelize the implementation? OpenMP, OpenMP_tasks, or PGASUS_async")
 set_property(CACHE OPTION_THREADING_IMPL PROPERTY STRINGS OpenMP OpenMP_tasks PGASUS_async)
