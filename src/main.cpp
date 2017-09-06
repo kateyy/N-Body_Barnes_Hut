@@ -225,7 +225,7 @@ int main(int argc, char **argv)
     {
         model.benchMode();
         std::cout << model.totalRuntimeSeconds() << ";"
-            << model.totalRuntimeSeconds() - model.runtimeFirst3Frames() << std::endl;
+            << model.totalRuntimeSeconds() - model.runtimeFirstNFrames() << std::endl;
     }
     return 0;
 }

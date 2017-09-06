@@ -34,6 +34,10 @@ set(OPTION_ALLOCATOR "std" CACHE STRING
     "Memory allocator: std (c library's default), tcmalloc (gperftools), ptmalloc3, or PGASUS (allocator only).")
 set_property(CACHE OPTION_ALLOCATOR PROPERTY STRINGS "std" "tcmalloc" "ptmalloc3" "PGASUS")
 
+set(OPTION_TIMING_EXCLUDE_FRAMES "10" CACHE STRING
+    "Exclude first N frames from time measurement (total time is also printed).")
+option(OPTION_MEASURE_OPERATION_TIMINGS "Output timings per operation" OFF)
+
 option(OPTION_CENTER_OF_MASS_IS_BODY "Use Body class for Node::m_centerOfMass. \
 This introduces some overhead, which can be used to measure the impact of occasional \
 dynamic memory allocations." OFF)

@@ -397,8 +397,6 @@ bool Renderer::drawScene_mem()
     }
     m_nextFrameToRender = modelFrame + 1;  
 
-    const auto startTime = std::chrono::high_resolution_clock::now();
-
     auto view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, m_positionZ));
     view = glm::rotate(view, glm::radians(m_angleX), glm::vec3(1.f, 0.f, 0.f));
     view = glm::rotate(view, glm::radians(m_angleY), glm::vec3(0.f, 1.f, 0.f));
@@ -407,7 +405,6 @@ bool Renderer::drawScene_mem()
 
     constexpr double scale = 1.f / (50000.f * LY);
 
-    const auto waitModelStartTime = std::chrono::high_resolution_clock::now();
     std::vector<RenderBody> toGpuData;
     std::vector<RenderBody> toGpuNodeData;
     std::vector<GLuint> toGpuNodeIndexes;
@@ -472,7 +469,6 @@ bool Renderer::drawScene_mem()
             }
         }
     }
-    const auto waitModelEndTime = std::chrono::high_resolution_clock::now();
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (toGpuData.empty()) {
@@ -520,15 +516,5 @@ bool Renderer::drawScene_mem()
         image.rgb8_data());
     image.toPngFile(std::to_string(m_model->frameCount()) + ".png");
 #endif
-
-    if (PRINT_TIMINGS)
-    {
-        const auto endTime = std::chrono::high_resolution_clock::now();
-        const auto syncTimeNS = timeDiffNanoSecs(waitModelStartTime, waitModelEndTime);
-        const auto renderTimeNS = timeDiffNanoSecs(startTime, endTime) - syncTimeNS;
-        std::cout << "Render time:  " << std::setw(11) << renderTimeNS / 1000
-            << "micro seconds, model sync time: " << syncTimeNS << "micro seconds" << std::endl;
-    }
-
     return true;
 }
