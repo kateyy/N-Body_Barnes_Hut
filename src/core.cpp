@@ -622,9 +622,15 @@ bool Model::updateUnlocked()
         forceOverNode(rootIdx, invalidNodeIdx, body, false);
     }
 
-#elif OPTION_THREADING_IMPL == THREADING_PGASUS_async
+#elif OPTION_THREADING_IMPL == THREADING_PGASUS_async \
+    || OPTION_THREADING_IMPL == THREADING_OpenMP_tasks
+
     auto loopFunc = [this] (size_t startIdx, size_t endIdx, size_t numaNodeId) {
+#if OPTION_THREADING_IMPL == THREADING_OpenMP_tasks
+        numaNodeId = size_t(numa::Node::curr().logicalId());
+#else
         assert(int(numaNodeId) == numa::Node::curr().logicalId());
+#endif
         auto &bodies = *m_nodeLocalBodies[numaNodeId];
         for (size_t ri = startIdx; ri < endIdx; ++ri) {
             const size_t rootIdx = m_rootIndices[ri];
@@ -643,19 +649,35 @@ bool Model::updateUnlocked()
     const size_t tasksPerThread = size_t(std::ceil(numTasks
         / float(m_totalThreadCount)));
     size_t startIdx = 0;
+#if OPTION_THREADING_IMPL == THREADING_OpenMP_tasks
+    #pragma omp parallel    // Use all OpenMP threads for task execution.
+    #pragma omp single      // Run the spawn loops only by one thread.
+                            // Causes an implicit task-wait at the end of the block
+#else
     std::list<numa::TriggerableRef> waitList;
+#endif
     for (size_t numaNodeId = 0; numaNodeId < m_numaNodes.size(); ++numaNodeId) {
         const numa::Node &numaNode = m_numaNodes[numaNodeId];
         for (size_t localThreadId = 0; localThreadId < numaNode.threadCount(); ++localThreadId) {
             const size_t endIdx = std::min(startIdx + tasksPerThread, numTasks);
+            if (startIdx == endIdx) {
+                break;
+            }
+#if OPTION_THREADING_IMPL == THREADING_OpenMP_tasks
+            #pragma omp task
+                loopFunc(startIdx, endIdx, 0); // OpenMP chooses the NUMA node here
+#else
             waitList.push_back(numa::async<void>(
                 std::bind(loopFunc, startIdx, endIdx, numaNodeId),
                 0,
                 numaNode));
+#endif
             startIdx = endIdx;
         }
     }
+#if OPTION_THREADING_IMPL == THREADING_PGASUS_async
     numa::wait(waitList);
+#endif
 
 #else
 #error "Selected threading type is not implemented."
